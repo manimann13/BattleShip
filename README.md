@@ -11,6 +11,7 @@
 - [x] Pixel-art assets, redrawn from `docs/asset-sheet-reference.webp`
 - [x] Effects: explosions, splashes, and sunk ships revealed
 - [x] Mouse and keyboard controls, and phone-width layout
+- [x] Settings screen: computer speed, animations, grid labels
 - [x] Unit tests for the rules and computer player
 - [x] [Pull request](https://github.com/manimann13/BattleShip/pull/1) merged into `main`
 
@@ -25,6 +26,5 @@
 ### Optional
 
 - [ ] Add sound (no audio files yet; the icons are in `public/assets`)
-- [ ] Add a Settings screen
 - [ ] Add automated checks on GitHub to run the tests on pull requests
 - [ ] Add automated tests for the screens
