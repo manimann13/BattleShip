@@ -4,9 +4,10 @@ import { Game, type PlayerId, type ShotOutcome } from '../game/game';
 import { FLEET, type Coord, type Orientation, coordLabel, isOnBoard } from '../game/types';
 import { type BoardView, createBoardView } from './boardView';
 import { button, h, icon } from './dom';
+import { OnlineGame } from './online';
 import { COMPUTER_DELAY_MS, type ComputerSpeed, loadSettings, saveSettings } from './settings';
 
-type Mode = 'computer' | 'two-player';
+type Mode = 'computer' | 'two-player' | 'online';
 
 const opponentOf = (player: PlayerId): PlayerId => (player === 0 ? 1 : 0);
 
@@ -29,8 +30,21 @@ export class App {
   private placementView: BoardView | null = null;
   private placementHover: Coord | null = null;
   private placingPlayer: PlayerId = 0;
+  private onlineReady: (() => void) | null = null;
+  private readonly online: OnlineGame;
 
   constructor(private readonly root: HTMLElement) {
+    this.online = new OnlineGame({
+      show: (...content) => this.show(...content),
+      showFresh: (...content) => this.showFresh(...content),
+      announce: (message) => {
+        this.live.textContent = message;
+      },
+      settings: this.settings,
+      startPlacement: (board, onReady) => this.startOnlinePlacement(board, onReady),
+      quit: () => this.showMenu(),
+      showModes: () => this.showModes(),
+    });
     this.screen.tabIndex = -1;
     this.live.setAttribute('aria-live', 'polite');
     this.root.append(this.screen, this.live);
@@ -59,6 +73,7 @@ export class App {
 
   private stopGame(): void {
     window.clearTimeout(this.computerTimer);
+    this.online.dispose();
     this.game = null;
     this.computer = null;
   }
@@ -104,6 +119,7 @@ export class App {
           'menu-buttons',
           button('vs Computer', () => this.startSetup('computer')),
           button('2 Players', () => this.startSetup('two-player')),
+          button('Online', () => this.online.showLobby()),
           button('Back', () => this.showMenu(), 'btn-quiet'),
         ),
       ),
@@ -134,6 +150,7 @@ export class App {
           h('li', '', 'A ship sinks when all of its squares are hit.'),
           h('li', '', 'Sink the whole enemy fleet to win.'),
           h('li', '', 'In 2 Players, pass the device between turns and look away while the other player is setting up or firing.'),
+          h('li', '', 'In Online, one player hosts and shares the 4-letter code, and the other joins with it from their own device.'),
         ),
         h('h2', 'subheading', 'Your fleet'),
         h('ul', 'howto-fleet', ...fleet),
@@ -218,6 +235,15 @@ export class App {
     this.mode = mode;
     this.boards = [new Board(), new Board()];
     this.orientation = 'horizontal';
+    this.showPlacement(0);
+  }
+
+  // Online matches reuse the placement screen but keep their connection open, so this skips stopGame().
+  private startOnlinePlacement(board: Board, onReady: () => void): void {
+    this.mode = 'online';
+    this.boards = [board, new Board()];
+    this.orientation = 'horizontal';
+    this.onlineReady = onReady;
     this.showPlacement(0);
   }
 
@@ -335,7 +361,9 @@ export class App {
 
   private finishPlacement(player: PlayerId): void {
     this.placementHover = null;
-    if (this.mode === 'computer') {
+    if (this.mode === 'online') {
+      this.onlineReady?.();
+    } else if (this.mode === 'computer') {
       this.boards[1].placeFleetRandomly();
       this.computer = new ComputerPlayer();
       this.startBattle();
