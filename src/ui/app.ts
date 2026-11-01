@@ -4,16 +4,16 @@ import { Game, type PlayerId, type ShotOutcome } from '../game/game';
 import { FLEET, type Coord, type Orientation, coordLabel, isOnBoard } from '../game/types';
 import { type BoardView, createBoardView } from './boardView';
 import { button, h, icon } from './dom';
+import { COMPUTER_DELAY_MS, type ComputerSpeed, loadSettings, saveSettings } from './settings';
 
 type Mode = 'computer' | 'two-player';
-
-const COMPUTER_DELAY_MS = 1000;
 
 const opponentOf = (player: PlayerId): PlayerId => (player === 0 ? 1 : 0);
 
 export class App {
   private readonly screen = h('div', 'screen');
   private readonly live = h('div', 'sr-only');
+  private readonly settings = loadSettings();
 
   private mode: Mode = 'computer';
   private boards: [Board, Board] = [new Board(), new Board()];
@@ -34,6 +34,7 @@ export class App {
     this.screen.tabIndex = -1;
     this.live.setAttribute('aria-live', 'polite');
     this.root.append(this.screen, this.live);
+    this.applyGridLabels();
     document.addEventListener('keydown', (event) => {
       if (this.placementView && event.key.toLowerCase() === 'r' && !event.metaKey && !event.ctrlKey) {
         this.rotate();
@@ -80,6 +81,7 @@ export class App {
           'div',
           'menu-buttons',
           button('Play', () => this.showModes()),
+          button('Settings', () => this.showSettings()),
           button('How to Play', () => this.showHowTo()),
         ),
       ),
@@ -141,6 +143,72 @@ export class App {
         h('div', 'actions', button('Back', () => this.showMenu())),
       ),
     );
+  }
+
+  private showSettings(): void {
+    const speedOptions: readonly [ComputerSpeed, string][] = [
+      ['slow', 'Slow'],
+      ['normal', 'Normal'],
+      ['fast', 'Fast'],
+    ];
+    const speeds = speedOptions.map(([speed, label]) => {
+      const input = h('input');
+      input.type = 'radio';
+      input.name = 'computer-speed';
+      input.checked = this.settings.computerSpeed === speed;
+      input.addEventListener('change', () => {
+        this.settings.computerSpeed = speed;
+        saveSettings(this.settings);
+      });
+      return h('label', 'setting-option', input, label);
+    });
+
+    const toggle = (label: string, checked: boolean, onChange: (checked: boolean) => void) => {
+      const input = h('input');
+      input.type = 'checkbox';
+      input.checked = checked;
+      input.addEventListener('change', () => {
+        onChange(input.checked);
+        saveSettings(this.settings);
+      });
+      return h('label', 'setting-option', input, label);
+    };
+
+    this.showFresh(
+      h(
+        'div',
+        'panel settings',
+        h('h1', 'heading settings-heading', icon('icon-gear', 'icon'), 'Settings'),
+        h(
+          'fieldset',
+          'setting-group',
+          h('legend', 'subheading', 'Computer speed'),
+          h('p', 'hint', 'How long the computer waits before firing.'),
+          h('div', 'setting-options', ...speeds),
+        ),
+        h(
+          'fieldset',
+          'setting-group',
+          h('legend', 'subheading', 'Display'),
+          h(
+            'div',
+            'setting-options',
+            toggle('Explosion and splash animations', this.settings.animations, (checked) => {
+              this.settings.animations = checked;
+            }),
+            toggle('Grid labels (A-J, 1-10)', this.settings.gridLabels, (checked) => {
+              this.settings.gridLabels = checked;
+              this.applyGridLabels();
+            }),
+          ),
+        ),
+        h('div', 'actions', button('Back', () => this.showMenu())),
+      ),
+    );
+  }
+
+  private applyGridLabels(): void {
+    this.root.classList.toggle('hide-grid-labels', !this.settings.gridLabels);
   }
 
   // ---------- Ship placement ----------
@@ -441,9 +509,14 @@ export class App {
     this.setMessage(this.gameMessage(outcome));
     if (this.mode === 'two-player' && !outcome.gameOver) this.awaitingPass = true;
     const views = this.renderBattle();
-    views?.enemy.playEffect(cell, outcome.result === 'miss' ? 'splash' : 'explosion');
+    if (this.settings.animations) {
+      views?.enemy.playEffect(cell, outcome.result === 'miss' ? 'splash' : 'explosion');
+    }
     if (this.mode === 'computer' && !outcome.gameOver) {
-      this.computerTimer = window.setTimeout(() => this.computerTurn(), COMPUTER_DELAY_MS);
+      this.computerTimer = window.setTimeout(
+        () => this.computerTurn(),
+        COMPUTER_DELAY_MS[this.settings.computerSpeed],
+      );
     }
   }
 
@@ -455,7 +528,9 @@ export class App {
     computer.report(target, outcome.result, outcome.ship);
     this.setMessage(this.gameMessage(outcome));
     const views = this.renderBattle();
-    views?.own.playEffect(target, outcome.result === 'miss' ? 'splash' : 'explosion');
+    if (this.settings.animations) {
+      views?.own.playEffect(target, outcome.result === 'miss' ? 'splash' : 'explosion');
+    }
   }
 
   private gameMessage(outcome: ShotOutcome): string {

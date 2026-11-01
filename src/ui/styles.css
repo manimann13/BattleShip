@@ -284,6 +284,59 @@ ol {
   height: 36px;
 }
 
+.settings {
+  max-width: 640px;
+  margin: 16px auto;
+}
+
+.settings-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-heading .icon {
+  width: 32px;
+  height: 32px;
+}
+
+.setting-group {
+  min-width: 0;
+  padding: 0;
+  margin: 12px 0 0;
+  border: 0;
+}
+
+.setting-group .subheading {
+  padding: 0;
+  margin: 8px 0 4px;
+}
+
+.setting-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin-top: 4px;
+}
+
+.setting-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.setting-option input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--turn-blue-border);
+  cursor: pointer;
+}
+
 /* ---------- Layout ---------- */
 
 .topbar {
@@ -427,6 +480,10 @@ ol {
   font-size: 14px;
   color: var(--ink-muted);
   text-align: center;
+}
+
+.hide-grid-labels .axis {
+  visibility: hidden;
 }
 
 .axis-x {
