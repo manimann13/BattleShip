@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Asset Preview</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; padding: 16px; background: #141c2b; color: #e8eef5; font-family: system-ui, sans-serif; }
+      h2 { margin: 16px 0 8px; font-size: 16px; }
+      .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+      figure { margin: 0; text-align: center; font-size: 11px; }
+      img { display: block; height: 72px; }
+      figcaption { margin-top: 4px; }
+    </style>
+  </head>
+  <body>
+    <h1>Asset preview (dev only)</h1>
+    <div id="sections"></div>
+    <script>
+      const sections = {
+        Ships: ['ship-carrier', 'ship-battleship', 'ship-cruiser', 'ship-submarine', 'ship-destroyer'],
+        Tiles: ['tile-empty', 'tile-selected', 'tile-valid', 'tile-invalid', 'tile-miss', 'tile-hit', 'tile-sunk', 'tile-ship'],
+        Effects: ['explosion-1', 'explosion-2', 'explosion-3', 'splash-1', 'splash-2', 'splash-3', 'reticle-white', 'reticle-yellow', 'reticle-red', 'mark-hit', 'mark-sunk'],
+        Symbols: ['icon-radar', 'icon-crosshair', 'icon-anchor', 'icon-gear', 'icon-sound-on', 'icon-sound-off', 'icon-flag-blue', 'icon-flag-red'],
+      };
+      const root = document.getElementById('sections');
+      for (const [title, names] of Object.entries(sections)) {
+        const heading = document.createElement('h2');
+        heading.textContent = title;
+        const row = document.createElement('div');
+        row.className = 'row';
+        for (const name of names) {
+          const figure = document.createElement('figure');
+          const img = document.createElement('img');
+          img.src = `assets/${name}.png`;
+          img.alt = name;
+          const caption = document.createElement('figcaption');
+          caption.textContent = name;
+          figure.append(img, caption);
+          row.append(figure);
+        }
+        root.append(heading, row);
+      }
+    </script>
+  </body>
+</html>
