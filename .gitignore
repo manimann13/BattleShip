@@ -20,3 +20,7 @@ desktop.ini
 *.ntvs*
 *.njsproj
 *.sin.docstates
+
+# Build Output
+node_modules/
+dist/
