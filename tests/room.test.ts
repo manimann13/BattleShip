@@ -1,0 +1,122 @@
+import { describe, expect, it } from 'vitest';
+import { type Peer, Room } from '../server/room';
+import { FLEET } from '../src/game/types';
+import { type ServerMessage, type ShipPlacement, boardFromFleet, parseClientMessage } from '../src/net/protocol';
+
+// Ships stacked in rows 0-4, all starting at column 0.
+const fleet: ShipPlacement[] = FLEET.map((spec, y) => ({
+  type: spec.type,
+  x: 0,
+  y,
+  orientation: 'horizontal',
+}));
+
+function fakePeer(): Peer & { messages: ServerMessage[] } {
+  const messages: ServerMessage[] = [];
+  return { messages, send: (message) => messages.push(message) };
+}
+
+// rng() < 0.5 means player 0 (the host) fires first.
+function startedRoom() {
+  const host = fakePeer();
+  const guest = fakePeer();
+  const room = new Room('ABCD', host, () => 0);
+  room.join(guest);
+  room.ready(0, fleet);
+  room.ready(1, fleet);
+  return { room, host, guest };
+}
+
+describe('Room', () => {
+  it('matches a guest with the host and rejects a third player', () => {
+    const host = fakePeer();
+    const guest = fakePeer();
+    const room = new Room('ABCD', host);
+    expect(room.join(guest)).toBe(1);
+    expect(host.messages).toContainEqual({ type: 'matched' });
+    expect(guest.messages).toContainEqual({ type: 'matched' });
+    expect(room.join(fakePeer())).toBeNull();
+  });
+
+  it('starts the battle once both fleets are in, telling each side whose turn it is', () => {
+    const { host, guest } = startedRoom();
+    expect(host.messages).toContainEqual({ type: 'opponentReady' });
+    expect(host.messages).toContainEqual({ type: 'start', yourTurn: true });
+    expect(guest.messages).toContainEqual({ type: 'start', yourTurn: false });
+  });
+
+  it('rejects an invalid fleet', () => {
+    const host = fakePeer();
+    const room = new Room('ABCD', host);
+    room.join(fakePeer());
+    room.ready(0, fleet.slice(1));
+    expect(host.messages.at(-1)).toMatchObject({ type: 'error' });
+  });
+
+  it('reports shots to both players and enforces turns', () => {
+    const { room, host, guest } = startedRoom();
+    room.fire(1, 0, 0);
+    expect(guest.messages.at(-1)).toEqual({ type: 'error', message: 'It is not your turn' });
+
+    room.fire(0, 0, 0);
+    expect(host.messages.at(-1)).toMatchObject({ type: 'shot', byYou: true, x: 0, y: 0, result: 'hit' });
+    expect(guest.messages.at(-1)).toMatchObject({ type: 'shot', byYou: false, x: 0, y: 0, result: 'hit' });
+
+    room.fire(0, 5, 5);
+    expect(host.messages.at(-1)).toMatchObject({ type: 'error' });
+  });
+
+  it('never leaks the opponent fleet before the game ends', () => {
+    const { room, host } = startedRoom();
+    room.fire(0, 9, 9);
+    expect(host.messages.at(-1)).toMatchObject({ result: 'miss', gameOver: false });
+    // Undefined values are dropped when the message is serialised.
+    expect(JSON.parse(JSON.stringify(host.messages.at(-1)))).not.toHaveProperty('fleet');
+    expect(JSON.parse(JSON.stringify(host.messages.at(-1)))).not.toHaveProperty('sunk');
+  });
+
+  it('reveals the fleets when the game ends and supports a rematch', () => {
+    const { room, host, guest } = startedRoom();
+    // The host sinks every ship while the guest keeps missing in rows 5-6.
+    const hits = FLEET.flatMap((spec, y) => Array.from({ length: spec.length }, (_, x) => ({ x, y })));
+    hits.forEach((cell, i) => {
+      room.fire(0, cell.x, cell.y);
+      if (i < hits.length - 1) room.fire(1, i % 10, 5 + Math.floor(i / 10));
+    });
+    expect(host.messages.at(-1)).toMatchObject({ type: 'shot', byYou: true, gameOver: true });
+    expect((host.messages.at(-1) as { fleet?: unknown[] }).fleet).toHaveLength(FLEET.length);
+    expect((guest.messages.at(-1) as { fleet?: unknown[] }).fleet).toHaveLength(FLEET.length);
+
+    room.requestRematch(0);
+    expect(guest.messages.at(-1)).toEqual({ type: 'rematchRequested' });
+    room.requestRematch(1);
+    expect(host.messages.at(-1)).toEqual({ type: 'rematchStart' });
+    expect(guest.messages.at(-1)).toEqual({ type: 'rematchStart' });
+  });
+
+  it('tells the remaining player when someone leaves', () => {
+    const { room, host } = startedRoom();
+    room.leave(1);
+    expect(host.messages.at(-1)).toEqual({ type: 'opponentLeft' });
+    expect(room.closed).toBe(true);
+  });
+});
+
+describe('protocol', () => {
+  it('parses valid client messages and rejects malformed ones', () => {
+    expect(parseClientMessage('{"type":"create"}')).toEqual({ type: 'create' });
+    expect(parseClientMessage('{"type":"join","code":"ABCD"}')).toEqual({ type: 'join', code: 'ABCD' });
+    expect(parseClientMessage('{"type":"fire","x":1,"y":2}')).toEqual({ type: 'fire', x: 1, y: 2 });
+    expect(parseClientMessage('{"type":"fire","x":1.5,"y":2}')).toBeNull();
+    expect(parseClientMessage('{"type":"join"}')).toBeNull();
+    expect(parseClientMessage('{"type":"ready","fleet":[{"type":"boat"}]}')).toBeNull();
+    expect(parseClientMessage('not json')).toBeNull();
+  });
+
+  it('builds a board only from a legal fleet', () => {
+    expect(boardFromFleet(fleet)?.isFleetComplete).toBe(true);
+    expect(boardFromFleet([...fleet].reverse())).toBeNull();
+    expect(boardFromFleet(fleet.map((ship) => ({ ...ship, y: 0 })))).toBeNull();
+    expect(boardFromFleet(fleet.map((ship) => ({ ...ship, x: 9 })))).toBeNull();
+  });
+});
