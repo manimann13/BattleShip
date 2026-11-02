@@ -100,6 +100,12 @@ export class Board {
     return this.placed.length > 0 && this.placed.every((ship) => this.isSunk(ship));
   }
 
+  // Records a shot whose outcome is already known, such as one reported by a remote opponent.
+  recordShot(cell: Coord, result: 'miss' | 'hit'): void {
+    if (!isOnBoard(cell)) throw new Error('Shot is off the board');
+    this.shots.set(cellIndex(cell), result);
+  }
+
   fire(cell: Coord): FireResult {
     if (!isOnBoard(cell)) throw new Error('Shot is off the board');
     if (this.shots.has(cellIndex(cell))) throw new Error('That square has already been fired at');

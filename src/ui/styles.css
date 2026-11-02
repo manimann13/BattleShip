@@ -215,6 +215,25 @@ ol {
   width: min(320px, 100%);
 }
 
+.text-input {
+  min-height: 48px;
+  padding: 4px 12px;
+  font-family: var(--font-pixel);
+  font-size: 28px;
+  letter-spacing: 0.3em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: rgba(20, 38, 62, 0.8);
+  border: 2px solid var(--panel-border);
+  border-radius: 8px;
+}
+
+.text-input:focus-visible {
+  outline: 3px solid #ffd23c;
+  outline-offset: 2px;
+}
+
 .panel {
   padding: 16px;
   background: var(--panel);

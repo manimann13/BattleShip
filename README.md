@@ -57,12 +57,13 @@ Everyone works on their own branch, named after them, and merges into `main` thr
 - [x] Effects: explosions, splashes, and sunk ships revealed
 - [x] Mouse and keyboard controls, and phone-width layout
 - [x] Settings screen: computer speed, animations, grid labels
+- [x] Online mode: two devices play over the internet through a WebSocket server (see Online play below)
 - [x] Unit tests for the rules, computer player and saved settings
 
 ### Left
 
 - [ ] Testing: Safari, Firefox, a real phone, and a vs Computer game played through to a win
-- [ ] Deployment: set up hosting so the game has a live link
+- [ ] Deployment: deploy to Render (see Online play below) and play a real two-device game
 - [ ] General UI improvements, if there's time
 - [ ] Some more general things
 
@@ -73,3 +74,22 @@ Everyone works on their own branch, named after them, and merges into `main` thr
 - [ ] Add sound (no audio files yet; the icons are in `public/assets`)
 - [ ] Add automated checks on GitHub to run the tests on pull requests
 - [ ] Add automated tests for the screens
+
+## Online play
+
+Online mode uses a small Node server (`server/`) that holds both boards, so a player never receives the opponent's ship positions. The browser only sends `ready` (its fleet) and `fire` messages. The message types are in `src/net/protocol.ts`.
+
+**Run it locally (two terminals):**
+
+```bash
+npm run server   # game server on http://localhost:3001
+npm run dev      # client on http://localhost:5173, forwards /ws to the server
+```
+
+Open the game in two browser windows, choose Play, then Online. Host in one window and join with the 4-letter code in the other.
+
+**Deploy for free on Render:**
+
+1. Push the code to GitHub. On render.com choose New, then Blueprint, and select the repository. `render.yaml` sets everything up.
+2. Render builds the client and runs one server that serves both the page and the WebSocket. Share the `onrender.com` link.
+3. The free plan sleeps after about 15 minutes idle, so the first connection can take up to a minute.
