@@ -1,5 +1,9 @@
 # Battle Ship
 
+**Play it live: https://battleship-7pbl.onrender.com/**
+
+Hosted on Render's free plan, so the first visit after about 15 minutes idle can take up to a minute to load.
+
 ## Workflow
 
 Everyone works on their own branch, named after them, and merges into `main` through a pull request. Nobody commits directly to `main`.
@@ -59,11 +63,11 @@ Everyone works on their own branch, named after them, and merges into `main` thr
 - [x] Settings screen: computer speed, animations, grid labels
 - [x] Online mode: two devices play over the internet through a WebSocket server (see Online play below)
 - [x] Unit tests for the rules, computer player and saved settings
+- [x] Deployment: live on [Render](https://battleship-7pbl.onrender.com/)
 
 ### Left
 
-- [ ] Testing: Safari, Firefox, a real phone, and a vs Computer game played through to a win
-- [ ] Deployment: deploy to Render (see Online play below) and play a real two-device game
+- [ ] Testing: a real two-device game, Safari, Firefox, a real phone, and a vs Computer game played through to a win
 - [ ] General UI improvements, if there's time
 - [ ] Some more general things
 
