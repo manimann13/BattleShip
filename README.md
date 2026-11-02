@@ -64,6 +64,7 @@ Everyone works on their own branch, named after them, and merges into `main` thr
 - [ ] Testing: Safari, Firefox, a real phone, and a vs Computer game played through to a win
 - [ ] Deployment: set up hosting so the game has a live link
 - [ ] General UI improvements, if there's time
+- [ ] Some more general things
 
 ### Optional
 
