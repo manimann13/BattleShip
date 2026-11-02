@@ -68,6 +68,8 @@ const alive = new WeakSet<WebSocket>();
 wss.on('connection', (socket) => {
   alive.add(socket);
   socket.on('pong', () => alive.add(socket));
+  // Without a listener, a bad frame from one client would crash the server. The socket closes itself after this.
+  socket.on('error', (error) => console.error('WebSocket error:', error.message));
 
   const peer: Peer = {
     send(message: ServerMessage) {
