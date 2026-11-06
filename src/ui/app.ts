@@ -5,6 +5,7 @@ import { FLEET, type Coord, type Orientation, coordLabel, isOnBoard } from '../g
 import { type BoardView, createBoardView } from './boardView';
 import { button, h, icon } from './dom';
 import { OnlineGame } from './online';
+import { playShotSound } from './sound';
 import { COMPUTER_DELAY_MS, type ComputerSpeed, loadSettings, saveSettings } from './settings';
 
 type Mode = 'computer' | 'two-player' | 'online';
@@ -212,6 +213,9 @@ export class App {
             'setting-options',
             toggle('Explosion and splash animations', this.settings.animations, (checked) => {
               this.settings.animations = checked;
+            }),
+            toggle('Sound effects', this.settings.sound, (checked) => {
+              this.settings.sound = checked;
             }),
             toggle('Grid labels (A-J, 1-10)', this.settings.gridLabels, (checked) => {
               this.settings.gridLabels = checked;
@@ -537,6 +541,7 @@ export class App {
     this.setMessage(this.gameMessage(outcome));
     if (this.mode === 'two-player' && !outcome.gameOver) this.awaitingPass = true;
     const views = this.renderBattle();
+    if (this.settings.sound) playShotSound(outcome.result);
     if (this.settings.animations) {
       views?.enemy.playEffect(cell, outcome.result === 'miss' ? 'splash' : 'explosion');
     }
@@ -556,6 +561,7 @@ export class App {
     computer.report(target, outcome.result, outcome.ship);
     this.setMessage(this.gameMessage(outcome));
     const views = this.renderBattle();
+    if (this.settings.sound) playShotSound(outcome.result);
     if (this.settings.animations) {
       views?.own.playEffect(target, outcome.result === 'miss' ? 'splash' : 'explosion');
     }
