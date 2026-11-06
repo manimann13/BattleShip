@@ -4,12 +4,14 @@ export interface Settings {
   computerSpeed: ComputerSpeed;
   animations: boolean;
   gridLabels: boolean;
+  sound: boolean;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
   computerSpeed: 'normal',
   animations: true,
   gridLabels: true,
+  sound: true,
 };
 
 export const COMPUTER_DELAY_MS: Readonly<Record<ComputerSpeed, number>> = {
@@ -35,6 +37,7 @@ export function parseSettings(raw: string | null): Settings {
       speed === 'slow' || speed === 'normal' || speed === 'fast' ? speed : DEFAULT_SETTINGS.computerSpeed,
     animations: typeof saved.animations === 'boolean' ? saved.animations : DEFAULT_SETTINGS.animations,
     gridLabels: typeof saved.gridLabels === 'boolean' ? saved.gridLabels : DEFAULT_SETTINGS.gridLabels,
+    sound: typeof saved.sound === 'boolean' ? saved.sound : DEFAULT_SETTINGS.sound,
   };
 }
 
