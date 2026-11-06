@@ -7,7 +7,7 @@ describe('parseSettings', () => {
   });
 
   it('reads saved choices', () => {
-    const saved = { computerSpeed: 'fast', animations: false, gridLabels: false };
+    const saved = { computerSpeed: 'fast', animations: false, gridLabels: false, sound: false };
     expect(parseSettings(JSON.stringify(saved))).toEqual(saved);
   });
 
@@ -16,7 +16,7 @@ describe('parseSettings', () => {
   });
 
   it('ignores invalid values', () => {
-    const saved = { computerSpeed: 'warp', animations: 'no', gridLabels: 1 };
+    const saved = { computerSpeed: 'warp', animations: 'no', gridLabels: 1, sound: 'loud' };
     expect(parseSettings(JSON.stringify(saved))).toEqual(DEFAULT_SETTINGS);
   });
 

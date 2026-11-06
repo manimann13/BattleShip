@@ -4,6 +4,7 @@ import { Connection } from '../net/connection';
 import { type ClientMessage, type ServerMessage, type ShipPlacement, toPlacement } from '../net/protocol';
 import { type BoardView, createBoardView } from './boardView';
 import { button, h, icon } from './dom';
+import { playShotSound } from './sound';
 import type { Settings } from './settings';
 
 // What the online game needs from the App that owns the screen.
@@ -277,6 +278,7 @@ export class OnlineGame {
     this.host.announce(this.message);
 
     const views = this.renderBattle();
+    if (this.host.settings.sound) playShotSound(shot.result);
     if (this.host.settings.animations) {
       const kind = shot.result === 'miss' ? 'splash' : 'explosion';
       (shot.byYou ? views.enemy : views.own).playEffect(cell, kind);
