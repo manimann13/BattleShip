@@ -198,9 +198,231 @@ ol {
   height: 1em;
 }
 
+/* ---------- Majestic main menu ---------- */
+
+.menu-scene {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+.menu-majestic {
+  justify-content: flex-start;
+  gap: 18px;
+  padding-top: clamp(16px, 7vh, 72px);
+  cursor: crosshair;
+}
+
+.menu-majestic > :not(.menu-scene) {
+  position: relative;
+  z-index: 1;
+}
+
+.title-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+
+.menu-majestic .title {
+  font-size: clamp(32px, 10.5vw, 104px);
+  white-space: nowrap;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-shadow: none;
+}
+
+.menu-majestic .title-icon {
+  filter: drop-shadow(0 4px 0 #120c04) drop-shadow(0 0 10px rgba(255, 210, 110, 0.35));
+}
+
+/* Gold letters with a dark pixel outline and a glint that sweeps across now and then. */
+.title-text {
+  color: transparent;
+  background-image:
+    linear-gradient(105deg, transparent 40%, rgba(255, 255, 240, 0.95) 50%, transparent 60%),
+    linear-gradient(#fff7cf 0%, #ffe08a 38%, #e3a733 52%, #b8741c 70%, #f2c255 100%);
+  background-size: 250% 100%, 100% 100%;
+  background-position: 160% 0, 0 0;
+  background-repeat: no-repeat;
+  background-clip: text;
+  -webkit-background-clip: text;
+  filter:
+    drop-shadow(3px 0 0 #1a0f04)
+    drop-shadow(-3px 0 0 #1a0f04)
+    drop-shadow(0 3px 0 #1a0f04)
+    drop-shadow(0 -3px 0 #1a0f04)
+    drop-shadow(0 6px 0 rgba(0, 0, 0, 0.55))
+    drop-shadow(0 0 18px rgba(255, 200, 90, 0.35));
+  animation: title-glint 6s ease-in-out infinite;
+}
+
+@keyframes title-glint {
+  0%,
+  70% {
+    background-position: 160% 0, 0 0;
+  }
+
+  100% {
+    background-position: -60% 0, 0 0;
+  }
+}
+
+.title-sub {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-pixel);
+  font-size: clamp(16px, 3.4vw, 22px);
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: #e9c87a;
+  text-shadow: 0 2px 0 #120c04;
+}
+
+.title-sub::before,
+.title-sub::after {
+  content: '';
+  width: clamp(24px, 8vw, 72px);
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #c99a3c);
+  box-shadow: 0 2px 0 #120c04;
+}
+
+.title-sub::after {
+  transform: scaleX(-1);
+}
+
+/* Riveted brass-framed plaque that holds the menu buttons. */
+.menu-plaque {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: min(380px, 100%);
+  padding: 22px 26px;
+  background:
+    radial-gradient(circle at 10px 10px, #e9c87a 0 2px, transparent 3px),
+    radial-gradient(circle at calc(100% - 10px) 10px, #e9c87a 0 2px, transparent 3px),
+    radial-gradient(circle at 10px calc(100% - 10px), #e9c87a 0 2px, transparent 3px),
+    radial-gradient(circle at calc(100% - 10px) calc(100% - 10px), #e9c87a 0 2px, transparent 3px),
+    rgba(7, 12, 28, 0.82);
+  border: 3px solid #a87c2c;
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 0 2px #2a1d08,
+    inset 0 0 0 4px rgba(233, 200, 122, 0.25),
+    0 6px 0 rgba(0, 0, 0, 0.45),
+    0 0 40px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  cursor: default;
+}
+
+.menu-plaque .menu-buttons {
+  width: 100%;
+}
+
+.menu-plaque .menu-prompt {
+  color: #e9c87a;
+}
+
+.scene-tip {
+  font-size: 15px;
+  color: rgba(233, 236, 248, 0.7);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title-text {
+    animation: none;
+  }
+
+  .scene-tip {
+    display: none;
+  }
+}
+
 .pass-icon {
   width: 96px;
   height: 96px;
+}
+
+.radar-sweep {
+  --radar-frames: 16;
+  background-image: url('/assets/radar-strip.png');
+  background-repeat: no-repeat;
+  background-size: calc(var(--radar-frames) * 100%) 100%;
+  image-rendering: pixelated;
+  animation: radar-sweep 2.4s steps(var(--radar-frames)) infinite;
+}
+
+@keyframes radar-sweep {
+  from {
+    background-position-x: 0;
+  }
+
+  to {
+    /* One full strip to the left; steps() lands exactly on each frame. */
+    background-position-x: calc(var(--radar-frames) * -96px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radar-sweep {
+    animation: none;
+  }
+}
+
+.radar-lost {
+  /* Turns the green radar red and slows it: no signal, still searching. */
+  filter: hue-rotate(-120deg) saturate(1.4) brightness(0.9);
+  animation-duration: 4s;
+}
+
+/* "Reconnecting..." dots that count down and back up: ... .. . .. ... */
+.dots {
+  display: inline-block;
+  width: 3ch;
+  text-align: left;
+}
+
+.dots-inner {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  white-space: nowrap;
+  animation: dots 1.6s infinite;
+  animation-timing-function: steps(1, end);
+}
+
+@keyframes dots {
+  0% {
+    width: 3ch;
+  }
+
+  25% {
+    width: 2ch;
+  }
+
+  50% {
+    width: 1ch;
+  }
+
+  75% {
+    width: 2ch;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dots-inner {
+    animation: none;
+  }
 }
 
 .menu-prompt {
@@ -599,6 +821,151 @@ button.cell[aria-disabled='true'] {
 }
 
 /* When boards stack, keep the grid you fire on at the top. */
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Stays on the right when the top bar wraps, so the message list opens on screen. */
+  margin-left: auto;
+}
+
+.btn-icon {
+  padding: 4px 10px;
+}
+
+.btn-icon .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.difficulty-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.difficulty-choice .btn {
+  width: 100%;
+}
+
+.difficulty-hint {
+  margin: 0;
+  font-size: 16px;
+  text-align: center;
+}
+
+.stats {
+  width: min(520px, 100%);
+  margin: 10px auto;
+}
+
+.stats .subheading {
+  margin-top: 0;
+  text-align: center;
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 18px;
+}
+
+.stats-table th,
+.stats-table td {
+  padding: 6px 8px;
+  text-align: center;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.stats-table tbody th {
+  font-weight: 400;
+  text-align: left;
+  color: var(--ink-muted);
+}
+
+.stats-table tbody tr:last-child th,
+.stats-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.stats-footer {
+  margin: 10px 0 0;
+  font-size: 17px;
+  text-align: center;
+  color: var(--ink-muted);
+}
+
+.board-panel .board-title {
+  position: relative;
+}
+
+.message-warning {
+  color: #ffd23c;
+}
+
+.message-control {
+  position: relative;
+}
+
+.message-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 180px;
+  padding: 8px;
+  background: var(--night);
+  border: 2px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+.message-menu[hidden] {
+  display: none;
+}
+
+.message-choice {
+  width: 100%;
+}
+
+.emote-bubble {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  z-index: 5;
+  padding: 6px 12px;
+  font-family: var(--font-pixel);
+  font-size: 18px;
+  white-space: nowrap;
+  color: #142034;
+  background: #f4f7fb;
+  border: 2px solid var(--turn-blue-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transform: translateY(-50%) scale(0.8);
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+}
+
+.emote-bubble.emote-theirs {
+  border-color: var(--red-border);
+}
+
+.emote-bubble.is-visible {
+  opacity: 1;
+  transform: translateY(-50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .emote-bubble {
+    transition: none;
+  }
+}
+
 @media (max-width: 959px) {
   .battlefield .board-panel:last-child {
     order: -1;

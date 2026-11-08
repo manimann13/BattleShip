@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ComputerPlayer } from '../src/ai/computer';
+import { ComputerPlayer, type Difficulty } from '../src/ai/computer';
 import { Board } from '../src/game/board';
 import { FLEET, coordLabel } from '../src/game/types';
 import { seeded } from './helpers';
@@ -7,10 +7,10 @@ import { seeded } from './helpers';
 const isAdjacent = (a: { x: number; y: number }, b: { x: number; y: number }) =>
   Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
 
-function playOut(seed: number): number {
+function playOut(seed: number, difficulty: Difficulty = 'normal'): number {
   const board = new Board();
   board.placeFleetRandomly(seeded(seed));
-  const computer = new ComputerPlayer(seeded(seed + 1000));
+  const computer = new ComputerPlayer(seeded(seed + 1000), difficulty);
   const seen = new Set<string>();
   let shots = 0;
   while (!board.allSunk) {
@@ -35,6 +35,32 @@ describe('ComputerPlayer', () => {
     let total = 0;
     for (let seed = 0; seed < games; seed++) total += playOut(seed);
     expect(total / games).toBeLessThan(75);
+  });
+
+  it('finishes a game on every difficulty without repeating a square', () => {
+    for (const difficulty of ['easy', 'hard'] as const) {
+      for (let seed = 0; seed < 30; seed++) playOut(seed, difficulty);
+    }
+  });
+
+  it('gets better with each difficulty level', () => {
+    const average = (difficulty: Difficulty) => {
+      let total = 0;
+      for (let seed = 0; seed < 100; seed++) total += playOut(seed, difficulty);
+      return total / 100;
+    };
+    const easy = average('easy');
+    const normal = average('normal');
+    const hard = average('hard');
+    expect(normal).toBeLessThan(easy - 10);
+    expect(hard).toBeLessThan(normal - 5);
+  });
+
+  it('on Hard, fires next to a hit', () => {
+    const computer = new ComputerPlayer(seeded(5), 'hard');
+    const hit = { x: 5, y: 5 };
+    computer.report(hit, 'hit');
+    expect(isAdjacent(computer.chooseShot(), hit)).toBe(true);
   });
 
   it('fires next to a hit', () => {
