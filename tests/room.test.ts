@@ -343,7 +343,7 @@ describe('Room rules', () => {
     const before = guest.messages.length;
     room.fire(0, 9, 9);
     room.fire(1, 9, 9);
-    expect(host.messages.at(-1)).toMatchObject({ type: 'error' });
+    expect(host.messages.at(-1)).toEqual({ type: 'error', message: 'The game is over' });
     expect(guest.messages.slice(before).every((message) => message.type === 'error')).toBe(true);
   });
 

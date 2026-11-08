@@ -1,6 +1,7 @@
 import { type MatchStats, accuracy, formatDuration } from '../game/stats';
 import { button, h, icon } from './dom';
 import type { Tally } from './record';
+import { setMusicEnabled } from './music';
 import { type Settings, saveSettings } from './settings';
 
 // End-of-game table comparing both sides, with an optional saved win/loss line.
@@ -8,6 +9,8 @@ export function statsPanel(
   stats: MatchStats,
   names: readonly [string, string],
   record?: { label: string; tally: Tally },
+  // Total Gold Anchors, passed only when this game earned one.
+  goldAnchors?: number,
 ): HTMLElement {
   const [a, b] = stats.sides;
   const rows: [string, string, string][] = [
@@ -33,10 +36,44 @@ export function statsPanel(
       }`,
     );
   }
-  return h('section', 'panel stats', h('h2', 'subheading', 'Match Stats'), table, footer);
+  const award = goldAnchors
+    ? [
+        h(
+          'p',
+          'gold-award',
+          icon('icon-anchor-gold', 'icon'),
+          h('span', '', h('strong', '', 'Gold Anchor earned!'), ' Victory without a single miss.'),
+          ...(goldAnchors > 1 ? [h('span', 'gold-count', `×${goldAnchors}`)] : []),
+        ),
+      ]
+    : [];
+  return h('section', 'panel stats', h('h2', 'subheading', 'Match Stats'), ...award, table, footer);
 }
 
 // Small sound toggle for the battle screens. Saves straight away and updates itself in place.
+// Turns the background music on or off.
+export function musicButton(settings: Settings): HTMLButtonElement {
+  const element = button('', () => {
+    settings.music = !settings.music;
+    saveSettings(settings);
+    setMusicEnabled(settings.music);
+    update();
+  }, 'btn-small btn-quiet btn-icon');
+  const update = () => {
+    const label = settings.music ? 'Turn music off' : 'Turn music on';
+    element.replaceChildren(icon(settings.music ? 'icon-music-on' : 'icon-music-off', 'icon'));
+    element.setAttribute('aria-label', label);
+    element.title = label;
+  };
+  update();
+  return element;
+}
+
+// The music and sound buttons, side by side.
+export function audioButtons(settings: Settings): HTMLButtonElement[] {
+  return [musicButton(settings), muteButton(settings)];
+}
+
 export function muteButton(settings: Settings): HTMLButtonElement {
   const element = button('', () => {
     settings.sound = !settings.sound;

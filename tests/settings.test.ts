@@ -30,7 +30,7 @@ afterEach(() => {
 describe('settings storage', () => {
   it('loads what was saved', () => {
     stubStorage(memoryStorage());
-    const choice: Settings = { difficulty: 'hard', computerSpeed: 'slow', animations: false, gridLabels: true, sound: false };
+    const choice: Settings = { difficulty: 'hard', computerSpeed: 'slow', animations: false, gridLabels: true, sound: false, music: false };
     saveSettings(choice);
     expect(loadSettings()).toEqual(choice);
   });
@@ -77,7 +77,7 @@ describe('parseSettings', () => {
   });
 
   it('reads saved choices', () => {
-    const saved = { difficulty: 'hard', computerSpeed: 'fast', animations: false, gridLabels: false, sound: false };
+    const saved = { difficulty: 'hard', computerSpeed: 'fast', animations: false, gridLabels: false, sound: false, music: false };
     expect(parseSettings(JSON.stringify(saved))).toEqual(saved);
   });
 
@@ -86,7 +86,7 @@ describe('parseSettings', () => {
   });
 
   it('ignores invalid values', () => {
-    const saved = { difficulty: 'impossible', computerSpeed: 'warp', animations: 'no', gridLabels: 1, sound: 'loud' };
+    const saved = { difficulty: 'impossible', computerSpeed: 'warp', animations: 'no', gridLabels: 1, sound: 'loud', music: 'yes' };
     expect(parseSettings(JSON.stringify(saved))).toEqual(DEFAULT_SETTINGS);
   });
 
