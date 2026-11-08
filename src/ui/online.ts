@@ -1,6 +1,6 @@
 import { Board } from '../game/board';
-import { MatchStats, isFlawless } from '../game/stats';
-import { FLEET, type Coord, coordLabel } from '../game/types';
+import { MatchStats, earnsGoldAnchor } from '../game/stats';
+import { FLEET, type Coord, type ShotResult, coordLabel } from '../game/types';
 import { Connection } from '../net/connection';
 import {
   type ClientMessage,
@@ -26,6 +26,8 @@ import { setMusicTrack } from './music';
 export interface OnlineHost {
   show(...content: Node[]): void;
   showFresh(...content: Node[]): void;
+  // A brass plaque centred on the screen, for the lobby and the waiting and notice screens.
+  plaque(...children: Node[]): HTMLElement;
   announce(message: string): void;
   settings: Settings;
   // Runs the shared ship-placement screen for this board and calls onReady when the player confirms.
@@ -199,9 +201,7 @@ export class OnlineGame {
     });
 
     this.host.showFresh(
-      h(
-        'div',
-        'menu',
+      this.host.plaque(
         h('h1', 'heading', 'Play Online'),
         h('p', 'menu-prompt', 'Play a friend on another device.'),
         h(
@@ -219,9 +219,7 @@ export class OnlineGame {
 
   private notice(title: string, text: string, ...actions: HTMLButtonElement[]): void {
     this.host.showFresh(
-      h(
-        'div',
-        'menu',
+      this.host.plaque(
         icon('icon-radar', 'pass-icon'),
         h('h1', 'heading', title),
         h('p', 'menu-prompt', text),
@@ -245,9 +243,7 @@ export class OnlineGame {
     const radar = h('div', radarClass);
     radar.setAttribute('aria-hidden', 'true');
     this.host.showFresh(
-      h(
-        'div',
-        'menu',
+      this.host.plaque(
         radar,
         h('h1', 'heading', title),
         h('p', 'menu-prompt', text),
@@ -610,7 +606,7 @@ export class OnlineGame {
       this.myTurn = false;
       this.stats.finish();
       this.tally = addResult('online', shot.byYou);
-      if (shot.byYou && isFlawless(this.stats.sides[0])) this.goldAnchors = addGoldAnchor();
+      if (shot.byYou && earnsGoldAnchor(this.stats.sides[0])) this.goldAnchors = addGoldAnchor();
     } else {
       this.myTurn = !shot.byYou;
     }
@@ -624,7 +620,7 @@ export class OnlineGame {
     if (shot.gameOver) this.message += shot.byYou ? ' You win!' : ' You lose.';
     this.host.announce(this.message);
 
-    const views = this.renderBattle();
+    const views = this.renderBattle(false, shot.result);
     if (this.host.settings.sound) playShotSound(shot.result);
     if (this.host.settings.animations) {
       const kind = shot.result === 'miss' ? 'splash' : 'explosion';
@@ -674,7 +670,7 @@ export class OnlineGame {
     return line;
   }
 
-  private renderBattle(fresh = false): { own: BoardView; enemy: BoardView } {
+  private renderBattle(fresh = false, flash?: ShotResult): { own: BoardView; enemy: BoardView } {
     const over = this.phase === 'over';
     const canFire = this.myTurn && !over && this.connected;
     // Messages need someone on the other end.
@@ -696,16 +692,21 @@ export class OnlineGame {
       settings: this.host.settings,
       banner: this.banner(),
       message: this.messageLine(),
+      flash,
       onQuit: () => this.host.quit(),
       controls,
       topbarExtras: canMessage ? [this.messageControl] : [],
-      summary: over
-        ? statsPanel(
-            this.stats,
-            ['You', 'Opponent'],
-            this.tally ? { label: 'Your online record', tally: this.tally } : undefined,
-            this.goldAnchors,
-          )
+      result: over
+        ? {
+            won: this.won,
+            title: this.won ? 'Victory!' : 'Defeat!',
+            summary: statsPanel(
+              this.stats,
+              ['You', 'Opponent'],
+              this.tally ? { label: 'Your online record', tally: this.tally } : undefined,
+              this.goldAnchors,
+            ),
+          }
         : undefined,
       own: { board: this.own, title: 'Your Fleet', badge: this.bubbles.mine },
       enemy: {

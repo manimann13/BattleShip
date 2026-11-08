@@ -55,7 +55,11 @@ export function formatDuration(seconds: number): string {
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-// A flawless game: every single shot hit. Earns the Gold Anchor.
-export function isFlawless(side: ShooterStats): boolean {
-  return side.shots > 0 && side.hits === side.shots;
+// The accuracy (in percent) a winner needs for the Gold Anchor.
+export const GOLD_ANCHOR_ACCURACY = 85;
+
+// A sharpshooter's game: at least 85% of shots hit, checked exactly (not rounded). A win takes
+// 17 hits, so that means 20 shots or fewer. Earns the Gold Anchor.
+export function earnsGoldAnchor(side: ShooterStats): boolean {
+  return side.shots > 0 && side.hits * 100 >= side.shots * GOLD_ANCHOR_ACCURACY;
 }
