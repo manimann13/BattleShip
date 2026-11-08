@@ -11,7 +11,7 @@ import { type Tally, addGoldAnchor, addResult, loadGoldAnchors } from './record'
 import { banner, battleScreen, seaChart, topStrip } from './battleView';
 import { audioButtons, statsPanel } from './statsView';
 import { setMusicEnabled, setMusicTrack, unlockMusic } from './music';
-import { playClickSound, playKrakenSound, playShotSound, playSkyChime } from './sound';
+import { playClickSound, playEndSound, playKrakenSound, playShotSound, playSkyChime } from './sound';
 import { COMPUTER_DELAY_MS, type ComputerSpeed, loadSettings, saveSettings } from './settings';
 
 type Mode = 'computer' | 'two-player' | 'online';
@@ -46,6 +46,7 @@ export class App {
   private readonly scene: MenuScene;
   // Holds the scene behind the play screens. Kept between renders so the sea never restarts.
   private readonly backdrop = h('div', 'play-backdrop');
+  private celebrationTimer: number | undefined;
 
   constructor(private readonly root: HTMLElement) {
     this.scene = createMenuScene({
@@ -64,6 +65,7 @@ export class App {
       show: (...content) => this.showPlay(false, ...content),
       showFresh: (...content) => this.showPlay(true, ...content),
       plaque: (...children) => this.playPlaque(...children),
+      celebrate: (won) => this.celebrate(won),
       announce: (message) => {
         this.live.textContent = message;
       },
@@ -112,6 +114,8 @@ export class App {
 
   private stopGame(): void {
     window.clearTimeout(this.computerTimer);
+    window.clearTimeout(this.celebrationTimer);
+    this.backdrop.classList.remove('celebrating');
     this.online.dispose();
     this.game = null;
     this.computer = null;
@@ -155,11 +159,23 @@ export class App {
   private showPlay(fresh: boolean, ...content: Node[]): void {
     this.root.classList.toggle('sky-day', this.scene.isDay());
     this.backdrop.replaceChildren(this.scene.element);
-    const view = h('div', 'play', this.backdrop, h('div', 'play-content', ...content));
+    const view = h('div', 'play', this.backdrop, h('div', 'play-content', ...content), this.scene.overlay);
     if (fresh) this.showFresh(view);
     else this.show(view);
     this.scene.setMode('backdrop', this.settings.animations);
     this.scene.start();
+  }
+
+  // The end of a game: a fanfare or a horn, and the sea behind the boards plays out the result
+  // (fireworks or a burning fleet) with the dimming lifted while it lasts.
+  private celebrate(won: boolean): void {
+    window.clearTimeout(this.celebrationTimer);
+    // Let the last shot's sound ring out first.
+    if (this.settings.sound) window.setTimeout(() => playEndSound(won), 650);
+    if (!this.settings.animations) return;
+    this.scene.celebrate(won ? 'victory' : 'defeat');
+    this.backdrop.classList.add('celebrating');
+    this.celebrationTimer = window.setTimeout(() => this.backdrop.classList.remove('celebrating'), 10000);
   }
 
   // A brass plaque centred over the backdrop, for the pass screen and online lobby and notices.
@@ -656,6 +672,8 @@ export class App {
     if (!outcome.gameOver) return;
     this.stats.finish();
     if (this.mode === 'computer') this.tally = addResult(this.settings.difficulty, outcome.shooter === 0);
+    // In 2 Players someone always wins, so it is always a victory.
+    this.celebrate(this.mode === 'two-player' || outcome.shooter === 0);
     // A human winner with 85% accuracy or better earns a Gold Anchor (the computer cannot).
     const humanWon = this.mode === 'two-player' || outcome.shooter === 0;
     if (humanWon && earnsGoldAnchor(this.stats.sides[outcome.shooter])) this.goldAnchors = addGoldAnchor();
