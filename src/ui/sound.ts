@@ -150,3 +150,159 @@ export function playKrakenSound(): void {
     // Ignore: sound is optional.
   }
 }
+
+// A held note with a quick attack, a steady middle and a short fade, through a soft low-pass so
+// square and sawtooth waves sound more like brass. `bend` slides the pitch down by that ratio.
+function note(
+  ac: AudioContext,
+  start: number,
+  seconds: number,
+  freq: number,
+  volume: number,
+  wave: OscillatorType,
+  cutoff: number,
+  bend = 1,
+): void {
+  const osc = ac.createOscillator();
+  osc.type = wave;
+  osc.frequency.setValueAtTime(freq, start);
+  if (bend !== 1) osc.frequency.exponentialRampToValueAtTime(freq * bend, start + seconds);
+  const filter = ac.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(cutoff, start);
+  const gain = ac.createGain();
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.linearRampToValueAtTime(volume, start + 0.02);
+  gain.gain.setValueAtTime(volume, start + seconds * 0.7);
+  gain.gain.exponentialRampToValueAtTime(0.001, start + seconds);
+  osc.connect(filter).connect(gain).connect(ac.destination);
+  osc.start(start);
+  osc.stop(start + seconds + 0.02);
+}
+
+// Victory: a bright brass fanfare (G, C, E, G, then a long high C), with fireworks popping after.
+// Defeat: one of the DEFEAT_SOUNDS below.
+export function playEndSound(won: boolean): void {
+  try {
+    const ac = context();
+    if (!ac) return;
+    if (ac.state === 'suspended') void ac.resume();
+    const t = ac.currentTime + 0.05;
+    if (won) {
+      const steps: [number, number, number][] = [
+        [0, 0.14, 392],
+        [0.15, 0.14, 523.25],
+        [0.3, 0.14, 659.25],
+        [0.45, 0.3, 783.99],
+        [0.8, 1.1, 1046.5],
+      ];
+      for (const [at, length, freq] of steps) {
+        note(ac, t + at, length, freq, 0.09, 'square', 2600);
+        note(ac, t + at, length, freq / 2, 0.08, 'sawtooth', 1200);
+      }
+      // A chord under the last note.
+      note(ac, t + 0.8, 1.1, 659.25, 0.05, 'triangle', 3000);
+      note(ac, t + 0.8, 1.1, 392, 0.05, 'triangle', 3000);
+      for (let i = 0; i < 5; i++) crackle(ac, t + 1.2 + i * 0.35 + Math.random() * 0.2, 0.4, 12, 0.18);
+    } else {
+      DEFEAT_SOUNDS[defeatSound](ac, t);
+    }
+  } catch {
+    // Ignore: sound is optional.
+  }
+}
+
+// A deep ship's bell: a low tone with the bright, out-of-tune overtones of struck metal.
+function bell(ac: AudioContext, start: number, freq: number, volume: number, seconds: number): void {
+  for (const [ratio, level, length] of [[1, 1, 1], [2, 0.5, 0.7], [2.76, 0.35, 0.5], [5.4, 0.15, 0.25]] as const) {
+    tone(ac, start, seconds * length, freq * ratio, freq * ratio * 0.999, volume * level, 'sine');
+  }
+  burst(ac, start, 0.03, 4000, 1500, volume * 0.6, 'bandpass');
+}
+
+// Ideas for the defeat sound, to try out. Each starts at time t.
+export const DEFEAT_SOUNDS = {
+  // 1. Sinking: a muffled boom, water rushing in, then bubbles slowing as the ship goes down.
+  sinking(ac: AudioContext, t: number): void {
+    tone(ac, t, 0.9, 110, 32, 0.6, 'sine');
+    burst(ac, t, 0.8, 700, 80, 0.45, 'lowpass');
+    burst(ac, t + 0.3, 1.8, 1400, 180, 0.3, 'bandpass');
+    tone(ac, t + 0.5, 2.2, 75, 48, 0.12, 'sawtooth');
+    for (let i = 0; i < 14; i++) {
+      const at = t + 0.6 + (i / 14) ** 1.5 * 2.6;
+      bubble(ac, at, 200 + Math.random() * 300 - i * 8, 0.14 - i * 0.006);
+    }
+  },
+  // 2. Ship's bell: three slow, deep tolls, the last one lower.
+  bell(ac: AudioContext, t: number): void {
+    bell(ac, t, 220, 0.16, 2.2);
+    bell(ac, t + 1.1, 220, 0.14, 2.2);
+    bell(ac, t + 2.2, 164.81, 0.16, 3);
+    burst(ac, t + 2.2, 2.4, 300, 50, 0.12, 'lowpass');
+  },
+  // 3. Minor fanfare: the victory fanfare's sad twin, slower, falling into a low minor chord.
+  minor(ac: AudioContext, t: number): void {
+    const steps: [number, number, number][] = [
+      [0, 0.3, 440],
+      [0.32, 0.3, 349.23],
+      [0.64, 0.3, 293.66],
+      [0.96, 1.6, 220],
+    ];
+    for (const [at, length, freq] of steps) {
+      note(ac, t + at, length, freq, 0.07, 'square', 1600);
+      note(ac, t + at, length, freq / 2, 0.07, 'triangle', 1200);
+    }
+    note(ac, t + 0.96, 1.6, 174.61, 0.05, 'triangle', 1400);
+    note(ac, t + 0.96, 1.6, 146.83, 0.06, 'triangle', 1400);
+  },
+  // 4. Bugle lament: a soft solo bugle playing a slow falling phrase.
+  bugle(ac: AudioContext, t: number): void {
+    const steps: [number, number, number][] = [
+      [0, 0.55, 440],
+      [0.6, 0.35, 392],
+      [1, 0.55, 349.23],
+      [1.6, 0.55, 329.63],
+      [2.2, 1.6, 293.66],
+    ];
+    for (const [at, length, freq] of steps) {
+      note(ac, t + at, length, freq, 0.12, 'triangle', 1800);
+      note(ac, t + at, length, freq * 2, 0.025, 'sawtooth', 1400);
+    }
+  },
+  // The first version: a ship's horn sinking down in four falling notes.
+  horn(ac: AudioContext, t: number): void {
+    const steps: [number, number, number][] = [
+      [0, 0.45, 196],
+      [0.5, 0.45, 185],
+      [1, 0.45, 174.61],
+      [1.5, 1.4, 164.81],
+    ];
+    for (const [at, length, freq] of steps) {
+      const last = length > 1;
+      note(ac, t + at, length, freq, 0.12, 'sawtooth', 700, last ? 0.94 : 0.985);
+      note(ac, t + at, length, freq / 2, 0.1, 'sawtooth', 400, last ? 0.94 : 0.985);
+    }
+    burst(ac, t + 1.6, 1.5, 500, 60, 0.25, 'lowpass');
+  },
+} as const;
+
+export type DefeatSound = keyof typeof DEFEAT_SOUNDS;
+
+// The one the game plays: Mani picked the minor fanfare (2026-11-08). The others are kept to try later.
+let defeatSound: DefeatSound = 'minor';
+
+// Plays one defeat sound now, to compare them.
+export function previewDefeatSound(name: DefeatSound): void {
+  try {
+    const ac = context();
+    if (!ac) return;
+    if (ac.state === 'suspended') void ac.resume();
+    DEFEAT_SOUNDS[name](ac, ac.currentTime + 0.05);
+  } catch {
+    // Ignore: sound is optional.
+  }
+}
+
+export function setDefeatSound(name: DefeatSound): void {
+  defeatSound = name;
+}

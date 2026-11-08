@@ -13,11 +13,18 @@ type Play = (ac: AudioContext, t: number, out: Out) => void;
 interface Song {
   readonly stepSeconds: number;
   readonly steps: number;
+  // Steps in one bar, so a change of tune can wait for the next downbeat.
+  readonly barSteps: number;
   readonly events: ReadonlyMap<number, readonly Play[]>;
 }
 
 const VOLUME = 0.5;
-const FADE_SECONDS = 0.8;
+// Changing tunes: the old one plays on and fades out while the new one fades in, both starting on
+// the old tune's next downbeat, so the switch blends instead of cutting.
+const FADE_OUT_SECONDS = 2.2;
+const FADE_IN_SECONDS = 1.6;
+// Turning the music off, or hiding the tab, fades out quickly.
+const STOP_SECONDS = 0.6;
 const LOOKAHEAD_SECONDS = 0.3;
 const TICK_MS = 80;
 
@@ -168,14 +175,14 @@ const snare = (volume: number) => hiss(0.14, 1800, 'bandpass', volume);
 
 type Note = readonly [midi: number | null, steps: number];
 
-function song(stepSeconds: number, steps: number, build: (at: (step: number, play: Play) => void) => void): Song {
+function song(stepSeconds: number, steps: number, barSteps: number, build: (at: (step: number, play: Play) => void) => void): Song {
   const events = new Map<number, Play[]>();
   build((step, play) => {
     const list = events.get(step) ?? [];
     list.push(play);
     events.set(step, list);
   });
-  return { stepSeconds, steps, events };
+  return { stepSeconds, steps, barSteps, events };
 }
 
 // Places a melody note by note, starting at step `from`.
@@ -201,7 +208,7 @@ const MENU_TUNE: readonly Note[] = [
 ];
 const MENU_ROOTS = [50, 43, 48, 45, 50, 46, 48, 50, 50, 46, 48, 45, 50, 46, 48, 50];
 
-const MENU = song(MENU_STEP, 16 * 6, (at) => {
+const MENU = song(MENU_STEP, 16 * 6, 6, (at) => {
   melody(at, MENU_TUNE, MENU_STEP, (midi, seconds) => reed(midi, seconds, 0.045));
   MENU_ROOTS.forEach((root, bar) => {
     const start = bar * 6;
@@ -225,7 +232,7 @@ const BATTLE_CALL: readonly Note[] = [
   [74, 16], [72, 8], [69, 8], [70, 8], [67, 8], [69, 12], [null, 4],
 ];
 
-const BATTLE = song(BATTLE_STEP, 8 * 16, (at) => {
+const BATTLE = song(BATTLE_STEP, 8 * 16, 16, (at) => {
   melody(at, BATTLE_CALL, BATTLE_STEP, (midi, seconds) => brass(midi, seconds, 0.035));
   BATTLE_ROOTS.forEach((root, bar) => {
     const start = bar * 16;
@@ -245,43 +252,66 @@ const SONGS: Record<Track, Song> = { menu: MENU, battle: BATTLE };
 
 // ---------- Player ----------
 
+interface Player {
+  track: Track;
+  bus: GainNode;
+  timer: number;
+  // Audio-clock time of the next step not yet scheduled.
+  nextTime: number;
+  step: number;
+  // Stop scheduling notes after this time (set once the player is fading out).
+  until: number;
+}
+
 let enabled = true;
 let unlocked = false;
 let wanted: Track | null = null;
-let playing: { track: Track; bus: GainNode; timer: number; nextTime: number; step: number } | null = null;
+let playing: Player | null = null;
 let updateQueued = false;
 
-function schedule(ac: AudioContext): void {
-  if (!playing) return;
-  const songNow = SONGS[playing.track];
+function schedule(ac: AudioContext, player: Player): void {
+  const song = SONGS[player.track];
   // After a stall (a busy page or a sleeping laptop), pick up from now instead of rushing to catch up.
-  if (playing.nextTime < ac.currentTime) playing.nextTime = ac.currentTime + 0.05;
-  while (playing.nextTime < ac.currentTime + LOOKAHEAD_SECONDS) {
-    for (const play of songNow.events.get(playing.step) ?? []) play(ac, playing.nextTime, playing.bus);
-    playing.nextTime += songNow.stepSeconds;
-    playing.step = (playing.step + 1) % songNow.steps;
+  if (player.nextTime < ac.currentTime) player.nextTime = ac.currentTime + 0.05;
+  while (player.nextTime < ac.currentTime + LOOKAHEAD_SECONDS && player.nextTime < player.until) {
+    for (const play of song.events.get(player.step) ?? []) play(ac, player.nextTime, player.bus);
+    player.nextTime += song.stepSeconds;
+    player.step = (player.step + 1) % song.steps;
   }
 }
 
-function stop(ac: AudioContext): void {
-  if (!playing) return;
-  const { bus, timer } = playing;
-  window.clearInterval(timer);
-  bus.gain.cancelScheduledValues(ac.currentTime);
-  bus.gain.setValueAtTime(bus.gain.value, ac.currentTime);
-  bus.gain.linearRampToValueAtTime(0, ac.currentTime + FADE_SECONDS);
-  window.setTimeout(() => bus.disconnect(), (FADE_SECONDS + LOOKAHEAD_SECONDS + 0.2) * 1000);
-  playing = null;
+// When the playing tune next reaches the start of a bar, at most one bar away.
+function nextDownbeat(ac: AudioContext, player: Player): number {
+  const song = SONGS[player.track];
+  const stepsLeft = (song.barSteps - (player.step % song.barSteps)) % song.barSteps;
+  return Math.max(ac.currentTime + 0.05, player.nextTime + stepsLeft * song.stepSeconds);
 }
 
-function begin(ac: AudioContext, track: Track): void {
+// Keeps the player going until `from`, then fades it out over `seconds` and lets it go.
+function fadeOut(ac: AudioContext, player: Player, from: number, seconds: number): void {
+  const gain = player.bus.gain;
+  const now = ac.currentTime;
+  const level = gain.value;
+  gain.cancelScheduledValues(now);
+  gain.setValueAtTime(level, now);
+  gain.setValueAtTime(level, Math.max(now, from));
+  gain.linearRampToValueAtTime(0, Math.max(now, from) + seconds);
+  player.until = from + seconds;
+  window.setTimeout(() => {
+    window.clearInterval(player.timer);
+    player.bus.disconnect();
+  }, (from + seconds - now + LOOKAHEAD_SECONDS + 0.3) * 1000);
+}
+
+function begin(ac: AudioContext, track: Track, at: number): Player {
   const bus = ac.createGain();
-  bus.gain.setValueAtTime(0, ac.currentTime);
-  bus.gain.linearRampToValueAtTime(VOLUME, ac.currentTime + FADE_SECONDS);
+  bus.gain.setValueAtTime(0, at);
+  bus.gain.linearRampToValueAtTime(VOLUME, at + FADE_IN_SECONDS);
   bus.connect(ac.destination);
-  playing = { track, bus, timer: 0, nextTime: ac.currentTime + 0.1, step: 0 };
-  playing.timer = window.setInterval(() => schedule(ac), TICK_MS);
-  schedule(ac);
+  const player: Player = { track, bus, timer: 0, nextTime: at, step: 0, until: Infinity };
+  player.timer = window.setInterval(() => schedule(ac, player), TICK_MS);
+  schedule(ac, player);
+  return player;
 }
 
 function update(): void {
@@ -292,8 +322,16 @@ function update(): void {
     const ac = context();
     if (!ac) return;
     if (ac.state === 'suspended') void ac.resume();
-    stop(ac);
-    if (desired) begin(ac, desired);
+    const old = playing;
+    playing = null;
+    if (!desired) {
+      if (old) fadeOut(ac, old, ac.currentTime, STOP_SECONDS);
+      return;
+    }
+    // Start the new tune on the old one's next downbeat, as the old one begins to fade.
+    const at = old ? nextDownbeat(ac, old) : ac.currentTime + 0.1;
+    if (old) fadeOut(ac, old, at, FADE_OUT_SECONDS);
+    playing = begin(ac, desired, at);
   } catch {
     // Music is optional: never let it break the game.
   }
