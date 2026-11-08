@@ -191,22 +191,18 @@ export class App {
   }
 
   private showDifficulty(): void {
-    const levels: readonly [Difficulty, string, string][] = [
-      ['easy', 'Easy', 'Fires at random.'],
-      ['normal', 'Normal', 'Hunts around every hit.'],
-      ['hard', 'Hard', 'Works out where your ships are most likely to be.'],
+    const levels: readonly [Difficulty, string][] = [
+      ['easy', 'Easy'],
+      ['normal', 'Normal'],
+      ['hard', 'Hard'],
     ];
-    const choices = levels.map(([difficulty, label, about]) => {
-      const choice = button(label, () => {
+    const choices = levels.map(([difficulty, label]) =>
+      button(label, () => {
         this.settings.difficulty = difficulty;
         saveSettings(this.settings);
         this.startSetup('computer');
-      }, this.settings.difficulty === difficulty ? 'btn-green' : '');
-      choice.setAttribute('aria-describedby', `difficulty-${difficulty}`);
-      const hint = h('p', 'hint difficulty-hint', about);
-      hint.id = `difficulty-${difficulty}`;
-      return h('div', 'difficulty-choice', choice, hint);
-    });
+      }, this.settings.difficulty === difficulty ? 'btn-green' : ''),
+    );
     this.showSceneMenu('Choose a difficulty', ...choices, button('Back', () => this.showModes(), 'btn-quiet'));
   }
 
