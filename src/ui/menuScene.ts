@@ -9,6 +9,8 @@ import type { ShotResult } from '../game/types';
 
 export interface MenuScene {
   readonly element: HTMLCanvasElement;
+  // A see-through layer for fireworks, placed above the play screen so they show over the boards.
+  readonly overlay: HTMLCanvasElement;
   // Mounts the animation if it is not already running. Call after the canvas is in the page.
   start(): void;
   // True while the scene shows a sunny day.
@@ -16,6 +18,9 @@ export interface MenuScene {
   // 'menu' is the interactive battle behind the menus. 'backdrop' is a calm, slower sea behind the
   // play screens: no clicks, keys or gunfire, and fewer frames. With animate off it holds one still frame.
   setMode(mode: SceneMode, animate?: boolean): void;
+  // Plays out the end of a game in the backdrop: fireworks from your ships for a victory,
+  // your fleet burning under enemy fire for a defeat. Skipped while the scene is still.
+  celebrate(kind: 'victory' | 'defeat'): void;
 }
 
 export type SceneMode = 'menu' | 'backdrop';
@@ -88,6 +93,8 @@ interface Shell {
   byPlayer: boolean;
   target: Side;
   trail: { x: number; y: number }[];
+  // A firework rocket: bursts into these colours instead of landing.
+  firework?: readonly string[];
 }
 
 interface Particle {
@@ -101,6 +108,8 @@ interface Particle {
   colors: readonly string[];
   size: number;
   grow: number;
+  // Drawn on the overlay above the play screen (fireworks).
+  top?: boolean;
 }
 
 interface Ring {
@@ -379,6 +388,15 @@ const KRAKEN_END = 9;
 const SINK_HITS = 5;
 const DYING_SECONDS = 0.9;
 const MAX_SCARS = 7;
+// How long the victory or defeat show lasts in the backdrop, in seconds.
+const CELEBRATION_SECONDS = 10;
+const FIREWORK_COLORS: readonly (readonly string[])[] = [
+  ['#ffffff', '#fff1a8', '#ffd23c', '#e3a733'],
+  ['#ffffff', '#cfe3ff', '#6fa8ff', '#3f7fe0'],
+  ['#ffffff', '#ffd0c8', '#f0655c', '#c0392b'],
+  ['#ffffff', '#d8ffd8', '#5fcf8a', '#1d8a4d'],
+  ['#ffffff', '#f3d6ff', '#c58cff', '#8a4fd8'],
+];
 const SKY_KEY = 'battleship-sky';
 
 // Night and day versions of the water colours, blended as the sky changes.
@@ -412,6 +430,10 @@ export function createMenuScene(options: SceneOptions): MenuScene {
   element.className = 'menu-scene';
   element.setAttribute('aria-hidden', 'true');
   const ctx = context(element);
+  const overlay = canvas(1, 1);
+  overlay.className = 'scene-overlay';
+  overlay.setAttribute('aria-hidden', 'true');
+  const octx = context(overlay);
   const rand = seeded(7);
   const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
@@ -504,6 +526,11 @@ export function createMenuScene(options: SceneOptions): MenuScene {
   let last = 0;
   let time = 0;
 
+  // The end-of-game show, while it runs.
+  let celebration: { kind: 'victory' | 'defeat'; t: number; next: number } | null = null;
+  // Ships the show set on fire, so their damage can be cleared when it ends.
+  let ablaze: Ship[] = [];
+
   // Easter egg state.
   let friendlyHits = 0;
   let kraken: { ship: Ship; t: number } | null = null;
@@ -524,6 +551,10 @@ export function createMenuScene(options: SceneOptions): MenuScene {
     element.style.width = `${W * scale}px`;
     element.style.height = `${H * scale}px`;
     ctx.imageSmoothingEnabled = false;
+    overlay.width = W;
+    overlay.height = H;
+    overlay.style.width = element.style.width;
+    overlay.style.height = element.style.height;
 
     const seaDepth = Math.round(Math.max(56, Math.min(H * 0.4, 100)));
     horizon = H - seaDepth;
@@ -712,6 +743,11 @@ export function createMenuScene(options: SceneOptions): MenuScene {
     return true;
   }
 
+  // Shot sounds only play on the menu; behind the boards the game makes its own sounds.
+  function impact(result: ShotResult): void {
+    if (mode === 'menu') options.onImpact(result);
+  }
+
   // ---------- Effects ----------
 
   function burst(
@@ -725,6 +761,7 @@ export function createMenuScene(options: SceneOptions): MenuScene {
     size: number,
     grow = 0,
     gravity = 0,
+    top = false,
   ): void {
     for (let i = 0; i < count; i++) {
       const a = rand() * Math.PI * 2;
@@ -740,6 +777,7 @@ export function createMenuScene(options: SceneOptions): MenuScene {
         colors,
         size,
         grow,
+        top,
       });
     }
   }
@@ -769,11 +807,15 @@ export function createMenuScene(options: SceneOptions): MenuScene {
 
   function land(shell: Shell): void {
     const { tx: x, ty: y } = shell;
+    if (shell.firework) {
+      fireworkBurst(x, y, shell.firework);
+      return;
+    }
     if (y < horizon - 1) {
       // Anti-aircraft burst in the sky.
       burst(x, y, 8, ['#fff1a8', '#ffb43c'], 30, 0, 0.18, 1);
       burst(x, y, 7, ['#565b68', '#3d414c', '#2a2d36'], 10, -2, 1.4, 1, 1);
-      if (shell.byPlayer) options.onImpact('miss');
+      if (shell.byPlayer) impact('miss');
       return;
     }
     // Nearest ships first, so a shot lands on whatever is in front.
@@ -791,11 +833,11 @@ export function createMenuScene(options: SceneOptions): MenuScene {
       explosion(x, Math.min(y, ship.baseline - 1), ship.hits >= 3);
       // The last hit sets off a chain of explosions; blowUp() then sends it down.
       if (ship.hits >= SINK_HITS) ship.dying = DYING_SECONDS;
-      options.onImpact('hit');
+      impact('hit');
       return;
     }
     splash(x, Math.max(y, horizon + 1));
-    if (shell.byPlayer) options.onImpact('miss');
+    if (shell.byPlayer) impact('miss');
   }
 
   function onShip(ship: Ship, x: number, y: number): boolean {
@@ -848,7 +890,104 @@ export function createMenuScene(options: SceneOptions): MenuScene {
     burst(cx, cy - 4, 14, ['#4a4f5c', '#3d414c', '#2a2d36'], 10, -18, 2.6, 1, 1.5);
     rings.push({ x: cx, y: ship.baseline + 1, t: 0 }, { x: cx - 8, y: ship.baseline + 2, t: -0.15 }, { x: cx + 8, y: ship.baseline + 2, t: -0.3 });
     ship.sink = 0;
-    options.onImpact('sunk');
+    impact('sunk');
+  }
+
+  // ---------- Victory and defeat ----------
+
+  function fireworkBurst(x: number, y: number, colors: readonly string[]): void {
+    burst(x, y, 8, ['#ffffff', '#fff6c8'], 16, 0, 0.22, 3, 0, 0, true);
+    burst(x, y, 48, colors, 42, 0, 1.5, 1, 0, 18, true);
+    burst(x, y, 16, colors, 24, 0, 1.2, 2, 0, 14, true);
+    // A few sparks fall and twinkle below the burst.
+    burst(x, y, 8, ['#fff1a8', '#ffd23c', '#e3a733'], 20, 6, 2.2, 1, 0, 30, true);
+  }
+
+  // A rocket rises from a ship's deck to a spot in the sky.
+  function launchFirework(ship: Ship): void {
+    const sx = shipX(ship) + ship.art.w * (0.3 + rand() * 0.4);
+    const sy = shipTop(ship) + ship.art.waterline - 6;
+    const tx = Math.max(6, Math.min(W - 6, sx + (rand() - 0.5) * W * 0.7));
+    const ty = Math.round(horizon * (0.12 + rand() * 0.6));
+    shells.push({
+      sx,
+      sy,
+      tx,
+      ty,
+      t: 0,
+      dur: 0.8 + rand() * 0.4,
+      arc: 4,
+      byPlayer: false,
+      target: 'enemy',
+      trail: [],
+      firework: FIREWORK_COLORS[Math.floor(rand() * FIREWORK_COLORS.length)],
+    });
+    burst(sx, sy, 4, ['#fff6c8', '#ffd86b'], 20, -10, 0.2, 1);
+  }
+
+  // Sets a ship alight with a few burn marks, without sinking it.
+  function setAblaze(ship: Ship, marks: number): void {
+    for (let i = 0; i < marks; i++) {
+      const spot = onHull(ship);
+      scar(ship, spot.x, spot.y);
+      explosion(spot.x, spot.y, false);
+    }
+    ship.hits = Math.max(ship.hits, Math.min(SINK_HITS - 1, marks));
+    ship.burning = CELEBRATION_SECONDS;
+  }
+
+  // The show is over: ships it set alight are patched up (the smoke drifts away on its own).
+  function endCelebration(): void {
+    for (const ship of ablaze) {
+      if (ship.sink >= 0 || ship.dying > 0) continue;
+      ship.scars = [];
+      ship.hits = 0;
+      ship.burning = 0;
+    }
+    ablaze = [];
+    celebration = null;
+  }
+
+  function startCelebration(kind: 'victory' | 'defeat'): void {
+    endCelebration();
+    celebration = { kind, t: 0, next: 0.2 };
+    const losers = ships.filter((s) => s.side === (kind === 'victory' ? 'enemy' : 'ally') && afloat(s) && s.layer > 0);
+    for (const ship of losers) setAblaze(ship, ship.layer === 2 ? 3 : 2);
+    ablaze = losers;
+    // In a defeat, the nearest allied ship that is not the flagship goes down.
+    if (kind === 'defeat') {
+      const victim = losers.find((s) => s.layer === 1) ?? losers.find((s) => s.layer === 2);
+      if (victim) victim.dying = DYING_SECONDS * 2;
+    }
+  }
+
+  function updateCelebration(dt: number): void {
+    if (!celebration) return;
+    celebration.t += dt;
+    celebration.next -= dt;
+    if (celebration.t > CELEBRATION_SECONDS) {
+      endCelebration();
+      return;
+    }
+    if (celebration.next > 0) return;
+    if (celebration.kind === 'victory') {
+      // Rockets come thick at first, then thin out.
+      celebration.next = celebration.t < 4 ? 0.22 + rand() * 0.2 : 0.45 + rand() * 0.4;
+      const launchers = ships.filter((s) => s.side === 'ally' && afloat(s));
+      const ship = launchers[Math.floor(rand() * launchers.length)];
+      if (ship) launchFirework(ship);
+    } else {
+      // The enemy keeps up a heavy fire: near misses around the burning fleet.
+      celebration.next = 0.35 + rand() * 0.35;
+      const shooters = ships.filter((s) => s.side === 'enemy' && afloat(s) && s.layer > 0);
+      const targets = ships.filter((s) => s.side === 'ally' && afloat(s) && s.layer > 0);
+      const shooter = shooters[Math.floor(rand() * shooters.length)];
+      const target = targets[Math.floor(rand() * targets.length)];
+      if (shooter && target) {
+        const miss = (rand() < 0.5 ? -1 : 1) * (4 + rand() * 10);
+        fire(shooter, shipX(target) + target.art.w / 2 + miss, target.baseline + 1 + Math.round(rand() * 3), false);
+      }
+    }
   }
 
   // ---------- Easter eggs ----------
@@ -857,7 +996,7 @@ export function createMenuScene(options: SceneOptions): MenuScene {
     explosion(x, Math.min(y, ship.baseline - 1), false);
     scar(ship, x, y);
     ship.burning = 4;
-    options.onImpact('hit');
+    impact('hit');
     friendlyHits++;
     if (friendlyHits < 3) return;
     friendlyHits = 0;
@@ -896,7 +1035,7 @@ export function createMenuScene(options: SceneOptions): MenuScene {
       ship.sink = 0;
       ship.burning = 0;
       splash(shipX(ship) + ship.art.w / 2, ship.baseline + 1);
-      options.onImpact('sunk');
+      impact('sunk');
     }
     if (kraken.t >= KRAKEN_END) kraken = null;
   }
@@ -906,6 +1045,7 @@ export function createMenuScene(options: SceneOptions): MenuScene {
   function update(dt: number): void {
     time += dt;
     updateEggs(dt);
+    updateCelebration(dt);
     parallax += ((pointer.x / W - 0.5) - parallax) * Math.min(1, dt * 3);
     for (const cloud of clouds) {
       cloud.x += (cloud.speed * dt) / W;
@@ -1265,17 +1405,20 @@ export function createMenuScene(options: SceneOptions): MenuScene {
         ctx.fillRect(Math.round(ring.x + Math.cos(a) * r), Math.round(ring.y + Math.sin(a) * r * 0.3), 1, 1);
       }
     }
+    octx.clearRect(0, 0, W, H);
     for (const shell of shells) {
+      const c = shell.firework ? octx : ctx;
       shell.trail.forEach((p, i) => {
-        ctx.fillStyle = i === shell.trail.length - 1 ? '#fff6c8' : i > 1 ? '#ffb43c' : '#a8542a';
-        ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
+        c.fillStyle = i === shell.trail.length - 1 ? '#fff6c8' : i > 1 ? '#ffb43c' : '#a8542a';
+        c.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
       });
     }
     for (const p of particles) {
+      const c = p.top ? octx : ctx;
       const age = 1 - p.life / p.max;
-      ctx.fillStyle = p.colors[Math.min(p.colors.length - 1, Math.floor(age * p.colors.length))];
+      c.fillStyle = p.colors[Math.min(p.colors.length - 1, Math.floor(age * p.colors.length))];
       const size = Math.max(1, Math.round(p.size));
-      ctx.fillRect(Math.round(p.x - size / 2), Math.round(p.y - size / 2), size, size);
+      c.fillRect(Math.round(p.x - size / 2), Math.round(p.y - size / 2), size, size);
     }
   }
 
@@ -1288,7 +1431,7 @@ export function createMenuScene(options: SceneOptions): MenuScene {
     }
     let dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    if (mode === 'backdrop') {
+    if (mode === 'backdrop' && !celebration) {
       pending += dt;
       if (pending < 0.05 && !frozen) {
         requestAnimationFrame(frame);
@@ -1357,8 +1500,14 @@ export function createMenuScene(options: SceneOptions): MenuScene {
 
   return {
     element,
+    overlay,
     isDay: () => day,
+    celebrate(kind) {
+      if (still || frozen) return;
+      startCelebration(kind);
+    },
     setMode(next, animate = true) {
+      if (next === 'menu') endCelebration();
       mode = next;
       frozen = next === 'backdrop' && !animate;
       pending = 0;

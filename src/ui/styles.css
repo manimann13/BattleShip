@@ -1274,6 +1274,25 @@ button.cell[aria-disabled='true'] {
   background: linear-gradient(rgba(8, 26, 54, 0.4), rgba(8, 26, 54, 0.62));
 }
 
+.play-backdrop::after {
+  transition: opacity 1.2s ease;
+}
+
+/* Fireworks are drawn above the play screen; clicks pass straight through. */
+.scene-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 5;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+/* While the victory or defeat show plays, the sea is brighter so it can be seen. */
+.play-backdrop.celebrating::after {
+  opacity: 0.35;
+}
+
 .play-content {
   position: relative;
   z-index: 1;

@@ -28,6 +28,8 @@ export interface OnlineHost {
   showFresh(...content: Node[]): void;
   // A brass plaque centred on the screen, for the lobby and the waiting and notice screens.
   plaque(...children: Node[]): HTMLElement;
+  // The game just ended: plays the victory or defeat show.
+  celebrate(won: boolean): void;
   announce(message: string): void;
   settings: Settings;
   // Runs the shared ship-placement screen for this board and calls onReady when the player confirms.
@@ -607,6 +609,7 @@ export class OnlineGame {
       this.stats.finish();
       this.tally = addResult('online', shot.byYou);
       if (shot.byYou && earnsGoldAnchor(this.stats.sides[0])) this.goldAnchors = addGoldAnchor();
+      this.host.celebrate(shot.byYou);
     } else {
       this.myTurn = !shot.byYou;
     }
