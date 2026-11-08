@@ -13,7 +13,12 @@ export interface MenuScene {
   start(): void;
   // True while the scene shows a sunny day.
   isDay(): boolean;
+  // 'menu' is the interactive battle behind the menus. 'backdrop' is a calm, slower sea behind the
+  // play screens: no clicks, keys or gunfire, and fewer frames. With animate off it holds one still frame.
+  setMode(mode: SceneMode, animate?: boolean): void;
 }
+
+export type SceneMode = 'menu' | 'backdrop';
 
 export interface SceneOptions {
   // Called when a shell the player fired lands, to play the matching sound.
@@ -385,11 +390,12 @@ const WATER = {
   glintDim: ['#9c936e', '#cfe7f8'],
 } as const;
 
+// A sunny day is the default; night (dark mode) only once the player has clicked the sun.
 function loadDay(): boolean {
   try {
-    return window.localStorage.getItem(SKY_KEY) === 'day';
+    return window.localStorage.getItem(SKY_KEY) !== 'night';
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -490,6 +496,11 @@ export function createMenuScene(options: SceneOptions): MenuScene {
   let parallax = 0;
   let ambientTimer = 2;
   let running = false;
+  let mode: SceneMode = 'menu';
+  // Backdrop with Animations off: draw one frame, then stop.
+  let frozen = false;
+  // Time saved up between backdrop frames, which run at about 20 a second.
+  let pending = 0;
   let last = 0;
   let time = 0;
 
@@ -942,7 +953,7 @@ export function createMenuScene(options: SceneOptions): MenuScene {
       // Allied turrets follow the pointer; enemies drift slowly.
       ship.aim = ship.aim.map((a, i) => {
         let target = 0.2 + Math.sin(time * 0.6 + ship.phase + i) * 0.08;
-        if (ship.side === 'ally' && ship.layer > 0) target = elevationTo(ship, i, pointer.x, pointer.y) ?? 0.15;
+        if (ship.side === 'ally' && ship.layer > 0 && mode === 'menu') target = elevationTo(ship, i, pointer.x, pointer.y) ?? 0.15;
         return a + (target - a) * Math.min(1, dt * 5);
       });
 
@@ -974,7 +985,8 @@ export function createMenuScene(options: SceneOptions): MenuScene {
       }
     }
 
-    ambientTimer -= dt;
+    // In the backdrop the ships hold their fire.
+    if (mode === 'menu') ambientTimer -= dt;
     if (ambientTimer <= 0) {
       ambientTimer = 2.2 + rand() * 3;
       const shooters = ships.filter((s) => afloat(s) && s.layer > 0);
@@ -1274,11 +1286,25 @@ export function createMenuScene(options: SceneOptions): MenuScene {
       running = false;
       return;
     }
-    const dt = Math.min(0.05, (now - last) / 1000);
+    let dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    if (mode === 'backdrop') {
+      pending += dt;
+      if (pending < 0.05 && !frozen) {
+        requestAnimationFrame(frame);
+        return;
+      }
+      // The backdrop moves at half speed.
+      dt = Math.min(0.1, pending) * 0.5;
+      pending = 0;
+    }
     if (!dirty || layout()) {
       update(dt);
       draw();
+      if (frozen) {
+        running = false;
+        return;
+      }
     }
     requestAnimationFrame(frame);
   }
@@ -1287,13 +1313,13 @@ export function createMenuScene(options: SceneOptions): MenuScene {
 
   window.addEventListener('resize', () => {
     dirty = true;
-    if (still && element.isConnected && layout()) draw();
+    if ((still || (frozen && !running)) && element.isConnected && layout()) draw();
   });
   document.addEventListener('pointermove', (event) => {
-    if (element.isConnected) pointer = toArt(event);
+    if (element.isConnected && mode === 'menu') pointer = toArt(event);
   });
   document.addEventListener('pointerdown', (event) => {
-    if (!element.isConnected || event.button !== 0) return;
+    if (!element.isConnected || mode !== 'menu' || event.button !== 0) return;
     const target = event.target as Element | null;
     if (target?.closest('button, input, select, textarea, a, label, .menu-plaque')) return;
     const { x, y } = toArt(event);
@@ -1319,7 +1345,7 @@ export function createMenuScene(options: SceneOptions): MenuScene {
     fire(others[0] ?? own, Math.round(x), Math.round(y), true, true);
   });
   document.addEventListener('keydown', (event) => {
-    if (!element.isConnected || still) return;
+    if (!element.isConnected || mode !== 'menu' || still) return;
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
     konami = key === KONAMI[konami] ? konami + 1 : key === KONAMI[0] ? 1 : 0;
     if (konami < KONAMI.length) return;
@@ -1332,6 +1358,13 @@ export function createMenuScene(options: SceneOptions): MenuScene {
   return {
     element,
     isDay: () => day,
+    setMode(next, animate = true) {
+      mode = next;
+      frozen = next === 'backdrop' && !animate;
+      pending = 0;
+      // Centre the view so the backdrop does not sit skewed toward the last pointer spot.
+      if (next === 'backdrop' && W > 0) pointer = { x: W / 2, y: horizon - 20 };
+    },
     start() {
       if (running) return;
       if (still) {

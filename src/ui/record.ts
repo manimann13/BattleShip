@@ -57,7 +57,7 @@ export function addResult(key: RecordKey, won: boolean): Tally {
   return record[key];
 }
 
-// Gold Anchors: wins without a single miss. Just a count, kept in this browser.
+// Gold Anchors: wins with 85% accuracy or better. Just a count, kept in this browser.
 const GOLD_KEY = 'battleship-gold-anchors';
 
 export function parseGoldAnchors(raw: string | null): number {
