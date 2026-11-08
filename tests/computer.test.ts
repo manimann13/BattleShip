@@ -76,3 +76,74 @@ describe('ComputerPlayer', () => {
     expect(coordLabel(next)).not.toBe('B1');
   });
 });
+
+const onBoard = ({ x, y }: { x: number; y: number }) =>
+  Number.isInteger(x) && Number.isInteger(y) && x >= 0 && x < 10 && y >= 0 && y < 10;
+
+describe('ComputerPlayer targeting', () => {
+  it('fires at all 100 squares exactly once when it never hits', () => {
+    const computer = new ComputerPlayer(seeded(9));
+    const seen = new Set<string>();
+    for (let i = 0; i < 100; i++) {
+      const target = computer.chooseShot();
+      expect(onBoard(target)).toBe(true);
+      seen.add(coordLabel(target));
+      computer.report(target, 'miss');
+    }
+    expect(seen.size).toBe(100);
+    expect(() => computer.chooseShot()).toThrow();
+  });
+
+  it('never fires off the board across many seeded games', () => {
+    for (let seed = 0; seed < 200; seed++) {
+      const board = new Board();
+      board.placeFleetRandomly(seeded(seed * 7 + 3));
+      const computer = new ComputerPlayer(seeded(seed));
+      while (!board.allSunk) {
+        const target = computer.chooseShot();
+        expect(onBoard(target)).toBe(true);
+        const { result, ship } = board.fire(target);
+        computer.report(target, result, ship);
+      }
+    }
+  });
+
+  it('only hunts on the board next to a corner hit', () => {
+    for (let seed = 0; seed < 20; seed++) {
+      const computer = new ComputerPlayer(seeded(seed));
+      computer.report({ x: 0, y: 0 }, 'hit');
+      expect(['B1', 'A2']).toContain(coordLabel(computer.chooseShot()));
+    }
+  });
+
+  it('extends a line inward when it reaches the edge', () => {
+    const computer = new ComputerPlayer(seeded(5));
+    computer.report({ x: 0, y: 5 }, 'hit');
+    computer.report({ x: 1, y: 5 }, 'hit');
+    expect(computer.chooseShot()).toEqual({ x: 2, y: 5 });
+  });
+
+  it('tries the other end of a line after a miss', () => {
+    const computer = new ComputerPlayer(seeded(6));
+    computer.report({ x: 4, y: 5 }, 'hit');
+    computer.report({ x: 5, y: 5 }, 'hit');
+    computer.report({ x: 6, y: 5 }, 'miss');
+    expect(computer.chooseShot()).toEqual({ x: 3, y: 5 });
+  });
+
+  it('stops circling a ship once it is sunk', () => {
+    const board = new Board();
+    const ship = board.place(FLEET[2], { x: 4, y: 4 }, 'vertical');
+    let nextToWreck = 0;
+    for (let seed = 0; seed < 100; seed++) {
+      const computer = new ComputerPlayer(seeded(seed));
+      computer.report({ x: 4, y: 4 }, 'hit');
+      computer.report({ x: 4, y: 5 }, 'hit');
+      computer.report({ x: 4, y: 6 }, 'sunk', ship);
+      const next = computer.chooseShot();
+      if (ship.cells.some((cell) => isAdjacent(cell, next))) nextToWreck++;
+    }
+    // A random pick lands beside the wreck about 8 times in 97; still hunting would be every time.
+    expect(nextToWreck).toBeLessThan(30);
+  });
+});
