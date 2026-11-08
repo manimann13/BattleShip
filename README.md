@@ -55,19 +55,25 @@ Everyone works on their own branch, named after them, and merges into `main` thr
 
 - [x] Game rules: 10x10 board, five classic ships, one shot per turn, win detection
 - [x] Ship placement: click to place, rotate, random, undo, valid and invalid previews
-- [x] vs Computer mode: fires at random, hunts around a hit, follows the line after two hits
+- [x] vs Computer mode with three difficulties: Easy fires at random (about 96 shots to win), Normal hunts around hits (about 60), Hard aims where ships are most likely to be (about 45)
 - [x] 2 Players mode: one screen, with a pass-the-device screen between turns
 - [x] Pixel-art assets, redrawn from `docs/asset-sheet-reference.webp`
 - [x] Effects: explosions, splashes, and sunk ships revealed
 - [x] Mouse and keyboard controls, and phone-width layout
-- [x] Settings screen: computer speed, animations, grid labels
+- [x] Settings screen: computer speed, animations, grid labels, sound
+- [x] Sound effects for miss, hit and sunk, plus a click for buttons (all synthesized, no audio files), with a mute button on the battle screen
+- [x] Animated pixel radar on the online waiting screens (connecting, game code, fleet ready)
+- [x] Main menu artwork: an animated moonlit sea battle in pixel art behind a gold title. Click the sea to fire; three hits sink an enemy ship
+- [x] End-of-game stats: shots, hits, accuracy, ships sunk, longest hit streak, time played, plus a win/loss record saved in the browser
 - [x] Online mode: two devices play over the internet through a WebSocket server (see Online play below)
-- [x] Unit tests for the rules, computer player and saved settings
+- [x] Online reconnecting: a dropped player has 60 seconds to come back, automatically or with Rejoin after a reload
+- [x] Online quick messages: a message button opens Good luck!, Nice shot!, Wow! and Good game! (no free-text chat, so nothing to moderate)
+- [x] Unit tests for the rules, computer player, stats, saved settings and record, and the online room
 - [x] Deployment: live on [Render](https://battleship-7pbl.onrender.com/)
 
 ### Left
 
-- [ ] Testing: a real two-device game, Safari, Firefox, a real phone, and a vs Computer game played through to a win
+- [ ] Testing: a real two-device game (including reconnecting on a phone), Safari, Firefox, a real phone, and a vs Computer game played through to a win
 - [ ] General UI improvements, if there's time
 - [ ] Some more general things
 
@@ -75,20 +81,24 @@ Everyone works on their own branch, named after them, and merges into `main` thr
 
 - [ ] Review the code already merged (it was merged without a review)
 - [ ] Finish this README: what the game is, how to run it, how to test it
-- [ ] Add sound (no audio files yet; the icons are in `public/assets`)
 - [ ] Add automated checks on GitHub to run the tests on pull requests
 - [ ] Add automated tests for the screens
 
 ## Online play
 
-Online mode uses a small Node server (`server/`) that holds both boards, so a player never receives the opponent's ship positions. The browser only sends `ready` (its fleet) and `fire` messages. The message types are in `src/net/protocol.ts`.
+Online mode uses a small Node server (`server/`) that holds both boards, so a player never receives the opponent's ship positions. The browser sends its fleet, its shots, rematch requests and emotes. The message types are in `src/net/protocol.ts`.
 
-**Run it locally (two terminals):**
+**Reconnecting:** when a player joins, the server gives them a secret token, which the browser keeps for that tab. If the connection drops, the server holds the seat for 60 seconds and the opponent sees a waiting message. The browser retries on its own, and after a page reload the main menu shows **Rejoin Online Game**. On return the server sends the whole match so far, so the boards and stats are rebuilt. Pressing Quit leaves straight away.
+
+**Quick messages:** online only. The message button next to the sound button opens four preset messages: Good luck!, Nice shot!, Wow! and Good game!. The list is in `src/net/protocol.ts` (`EMOTES`). The server rejects anything else and drops messages sent less than 1.5 seconds apart.
+
+**Run it locally:**
 
 ```bash
-npm run server   # game server on http://localhost:3001
-npm run dev      # client on http://localhost:5173, forwards /ws to the server
+npm run dev      # the game on http://localhost:5173, and the game server on port 3001
 ```
+
+`npm run dev` starts the game server for you. If one is already running (for example from `npm run server`), it uses that one instead.
 
 Open the game in two browser windows, choose Play, then Online. Host in one window and join with the 4-letter code in the other.
 

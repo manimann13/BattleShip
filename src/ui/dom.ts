@@ -17,7 +17,7 @@ export function preloadSprites(): void {
     'tile-empty', 'tile-selected', 'tile-valid', 'tile-invalid', 'tile-miss', 'tile-hit', 'tile-sunk',
     'mark-hit', 'mark-sunk', 'explosion-strip', 'splash-strip',
     'ship-carrier', 'ship-battleship', 'ship-cruiser', 'ship-submarine', 'ship-destroyer',
-    'icon-anchor', 'icon-gear', 'icon-radar', 'icon-flag-blue', 'icon-flag-red',
+    'icon-anchor', 'icon-gear', 'icon-radar', 'icon-flag-blue', 'icon-flag-red', 'icon-sound-on', 'icon-sound-off', 'icon-message',
   ];
   for (const name of names) new Image().src = assetUrl(name);
 }

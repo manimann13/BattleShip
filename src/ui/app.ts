@@ -1,11 +1,15 @@
-import { ComputerPlayer } from '../ai/computer';
+import { ComputerPlayer, type Difficulty } from '../ai/computer';
 import { Board, shipCells } from '../game/board';
 import { Game, type PlayerId, type ShotOutcome } from '../game/game';
+import { MatchStats } from '../game/stats';
 import { FLEET, type Coord, type Orientation, coordLabel, isOnBoard } from '../game/types';
 import { type BoardView, createBoardView } from './boardView';
 import { button, h, icon } from './dom';
+import { type MenuScene, createMenuScene } from './menuScene';
 import { OnlineGame } from './online';
-import { playShotSound } from './sound';
+import { type Tally, addResult } from './record';
+import { muteButton, statsPanel } from './statsView';
+import { playClickSound, playShotSound } from './sound';
 import { COMPUTER_DELAY_MS, type ComputerSpeed, loadSettings, saveSettings } from './settings';
 
 type Mode = 'computer' | 'two-player' | 'online';
@@ -26,6 +30,8 @@ export class App {
   private message = '';
   private lastTarget: Coord | undefined;
   private computerTimer: number | undefined;
+  private stats = new MatchStats();
+  private tally: Tally | null = null;
 
   private orientation: Orientation = 'horizontal';
   private placementView: BoardView | null = null;
@@ -33,8 +39,14 @@ export class App {
   private placingPlayer: PlayerId = 0;
   private onlineReady: (() => void) | null = null;
   private readonly online: OnlineGame;
+  private readonly scene: MenuScene;
 
   constructor(private readonly root: HTMLElement) {
+    this.scene = createMenuScene({
+      onImpact: (result) => {
+        if (this.settings.sound) playShotSound(result);
+      },
+    });
     this.online = new OnlineGame({
       show: (...content) => this.show(...content),
       showFresh: (...content) => this.showFresh(...content),
@@ -50,6 +62,11 @@ export class App {
     this.live.setAttribute('aria-live', 'polite');
     this.root.append(this.screen, this.live);
     this.applyGridLabels();
+    // Every menu and screen button ticks. Board squares are not .btn, so shots keep their own sounds.
+    // This runs after the button's own handler, so unmuting ticks and muting stays silent.
+    document.addEventListener('click', (event) => {
+      if (this.settings.sound && (event.target as Element | null)?.closest?.('button.btn')) playClickSound();
+    });
     document.addEventListener('keydown', (event) => {
       if (this.placementView && event.key.toLowerCase() === 'r' && !event.metaKey && !event.ctrlKey) {
         this.rotate();
@@ -86,45 +103,74 @@ export class App {
 
   // ---------- Menus ----------
 
-  private showMenu(): void {
-    this.stopGame();
+  // The animated sea battle behind the main menus, with the buttons on a framed plaque.
+  private showSceneMenu(prompt: string, ...buttons: HTMLElement[]): void {
+    const plaque = h('div', 'menu-plaque');
+    if (prompt) plaque.append(h('p', 'menu-prompt', prompt));
+    plaque.append(h('div', 'menu-buttons', ...buttons));
     this.showFresh(
       h(
         'div',
-        'menu',
+        'menu menu-majestic',
+        this.scene.element,
         this.title(),
-        h(
-          'div',
-          'menu-buttons',
-          button('Play', () => this.showModes()),
-          button('Settings', () => this.showSettings()),
-          button('How to Play', () => this.showHowTo()),
-        ),
+        plaque,
+        h('p', 'scene-tip', 'Tap or click the sea to fire. Three hits sink a ship.'),
       ),
+    );
+    this.scene.start();
+  }
+
+  private showMenu(): void {
+    this.stopGame();
+    this.showSceneMenu(
+      '',
+      ...(this.online.canRejoin()
+        ? [button('Rejoin Online Game', () => this.online.rejoinSaved(), 'btn-green')]
+        : []),
+      button('Play', () => this.showModes()),
+      button('Settings', () => this.showSettings()),
+      button('How to Play', () => this.showHowTo()),
     );
   }
 
   private title(): HTMLElement {
-    return h('h1', 'title', icon('icon-anchor', 'title-icon'), 'Battle Ship');
+    return h(
+      'header',
+      'title-block',
+      h('h1', 'title', icon('icon-anchor', 'title-icon'), h('span', 'title-text', 'Battle Ship')),
+      h('p', 'title-sub', 'Command the Seas'),
+    );
   }
 
   private showModes(): void {
-    this.showFresh(
-      h(
-        'div',
-        'menu',
-        this.title(),
-        h('p', 'menu-prompt', 'Choose your opponent'),
-        h(
-          'div',
-          'menu-buttons',
-          button('vs Computer', () => this.startSetup('computer')),
-          button('2 Players', () => this.startSetup('two-player')),
-          button('Online', () => this.online.showLobby()),
-          button('Back', () => this.showMenu(), 'btn-quiet'),
-        ),
-      ),
+    this.showSceneMenu(
+      'Choose your opponent',
+      button('vs Computer', () => this.showDifficulty()),
+      button('2 Players', () => this.startSetup('two-player')),
+      button('Online', () => this.online.showLobby()),
+      button('Back', () => this.showMenu(), 'btn-quiet'),
     );
+  }
+
+  private showDifficulty(): void {
+    const levels: readonly [Difficulty, string, string][] = [
+      ['easy', 'Easy', 'Fires at random.'],
+      ['normal', 'Normal', 'Hunts around every hit.'],
+      ['hard', 'Hard', 'Works out where your ships are most likely to be.'],
+    ];
+    const choices = levels.map(([difficulty, label, about]) => {
+      const choice = button(label, () => {
+        this.settings.difficulty = difficulty;
+        saveSettings(this.settings);
+        this.startSetup('computer');
+      }, this.settings.difficulty === difficulty ? 'btn-green' : '');
+      choice.setAttribute('aria-describedby', `difficulty-${difficulty}`);
+      const hint = h('p', 'hint difficulty-hint', about);
+      hint.id = `difficulty-${difficulty}`;
+      return h('div', 'difficulty-choice', choice, hint);
+    });
+    this.showSceneMenu('Choose a difficulty', ...choices, button('Back', () => this.showModes(), 'btn-quiet'));
   }
 
   private showHowTo(): void {
@@ -369,7 +415,7 @@ export class App {
       this.onlineReady?.();
     } else if (this.mode === 'computer') {
       this.boards[1].placeFleetRandomly();
-      this.computer = new ComputerPlayer();
+      this.computer = new ComputerPlayer(Math.random, this.settings.difficulty);
       this.startBattle();
     } else if (player === 0) {
       this.orientation = 'horizontal';
@@ -407,6 +453,8 @@ export class App {
     this.viewer = 0;
     this.awaitingPass = false;
     this.lastTarget = undefined;
+    this.stats = new MatchStats();
+    this.tally = null;
     this.setMessage('Choose a square on the enemy grid to fire.');
     this.renderBattle(true);
   }
@@ -504,10 +552,11 @@ export class App {
         'topbar',
         h('p', 'brand', icon('icon-anchor', 'icon'), 'Battle Ship'),
         this.banner(game),
-        button('Quit', () => this.showMenu(), 'btn-small btn-quiet'),
+        h('div', 'topbar-actions', muteButton(this.settings), button('Quit', () => this.showMenu(), 'btn-small btn-quiet')),
       ),
       h('p', 'message', this.message),
       controls,
+      ...(over ? [this.endStats()] : []),
       h(
         'div',
         'battlefield',
@@ -533,11 +582,21 @@ export class App {
     return { own, enemy };
   }
 
+  private endStats(): HTMLElement {
+    const names: [string, string] = this.mode === 'computer' ? ['You', 'Computer'] : ['Player 1', 'Player 2'];
+    const level = this.settings.difficulty;
+    const record = this.mode === 'computer' && this.tally
+      ? { label: `Your record on ${level[0].toUpperCase()}${level.slice(1)}`, tally: this.tally }
+      : undefined;
+    return statsPanel(this.stats, names, record);
+  }
+
   private fireAt(cell: Coord): void {
     const game = this.game;
     if (!game) return;
     this.lastTarget = cell;
     const outcome = game.fire(cell);
+    this.recordShot(outcome);
     this.setMessage(this.gameMessage(outcome));
     if (this.mode === 'two-player' && !outcome.gameOver) this.awaitingPass = true;
     const views = this.renderBattle();
@@ -559,12 +618,21 @@ export class App {
     const target = computer.chooseShot();
     const outcome = game.fire(target);
     computer.report(target, outcome.result, outcome.ship);
+    this.recordShot(outcome);
     this.setMessage(this.gameMessage(outcome));
     const views = this.renderBattle();
     if (this.settings.sound) playShotSound(outcome.result);
     if (this.settings.animations) {
       views?.own.playEffect(target, outcome.result === 'miss' ? 'splash' : 'explosion');
     }
+  }
+
+  // Updates the stats for a shot, and saves the result when a vs Computer game ends.
+  private recordShot(outcome: ShotOutcome): void {
+    this.stats.record(outcome.shooter, outcome.result);
+    if (!outcome.gameOver) return;
+    this.stats.finish();
+    if (this.mode === 'computer') this.tally = addResult(this.settings.difficulty, outcome.shooter === 0);
   }
 
   private gameMessage(outcome: ShotOutcome): string {

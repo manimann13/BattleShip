@@ -1,11 +1,24 @@
 import { Board } from '../game/board';
+import { MatchStats } from '../game/stats';
 import { FLEET, type Coord, coordLabel } from '../game/types';
 import { Connection } from '../net/connection';
-import { type ClientMessage, type ServerMessage, type ShipPlacement, toPlacement } from '../net/protocol';
+import {
+  type ClientMessage,
+  EMOTES,
+  type EmoteId,
+  type ResumeState,
+  type ServerMessage,
+  type ShipPlacement,
+  type ShotRecord,
+  boardFromFleet,
+  toPlacement,
+} from '../net/protocol';
 import { type BoardView, createBoardView } from './boardView';
 import { button, h, icon } from './dom';
-import { playShotSound } from './sound';
+import { type Tally, addResult } from './record';
 import type { Settings } from './settings';
+import { playShotSound } from './sound';
+import { muteButton, statsPanel } from './statsView';
 
 // What the online game needs from the App that owns the screen.
 export interface OnlineHost {
@@ -21,27 +34,142 @@ export interface OnlineHost {
 
 type Phase = 'connecting' | 'waiting' | 'placing' | 'battle' | 'over';
 
+interface Session {
+  code: string;
+  token: string;
+}
+
 const CODE_LENGTH = 4;
+const SESSION_KEY = 'battleship-online';
+// Waits between reconnect attempts, about 60 seconds in all: as long as the server keeps a seat.
+const RETRY_DELAYS_MS = [500, 1000, 2000, 4000, 8000, 8000, 8000, 8000, 8000, 8000, 5000];
+const EMOTE_SHOW_MS = 3000;
+const EMOTE_GAP_MS = 1500;
+
+function loadSession(): Session | null {
+  try {
+    const parsed: unknown = JSON.parse(window.sessionStorage.getItem(SESSION_KEY) ?? 'null');
+    if (parsed && typeof parsed === 'object') {
+      const { code, token } = parsed as Record<string, unknown>;
+      if (typeof code === 'string' && typeof token === 'string') return { code, token };
+    }
+  } catch {
+    // Blocked or corrupt storage: nothing to rejoin.
+  }
+  return null;
+}
+
+// Kept per tab, so a reload can rejoin but a second tab does not take over the same seat.
+function storeSession(session: Session | null): void {
+  try {
+    if (session) window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    else window.sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    // Rejoining after a reload then will not be offered.
+  }
+}
 
 // Plays a match against a remote opponent. The server owns the real boards; this side
 // keeps its own fleet plus a record of the shots it has fired at the enemy.
 export class OnlineGame {
   private connection: Connection | null = null;
+  private session: Session | null = loadSession();
+  // True while this page is taking part in a match, as opposed to holding a session left by a reload.
+  private active = false;
   private phase: Phase = 'connecting';
   private own = new Board();
   private enemy = new Board();
+  private stats = new MatchStats();
+  private tally: Tally | null = null;
   private myTurn = false;
   private won = false;
   private message = '';
   private lastTarget: Coord | undefined;
   private awaitingShot = false;
+  private fleetSent = false;
   private rematchSent = false;
   private opponentLeft = false;
+  private opponentAway = false;
 
-  constructor(private readonly host: OnlineHost) {}
+  private connected = false;
+  // The message that started the last connection attempt, so Retry can repeat it.
+  private lastAttempt: ClientMessage = { type: 'create' };
+  private reconnecting = false;
+  private retry = 0;
+  private retryTimer: number | undefined;
 
-  // Closes any open connection. Safe to call at any time.
+  private readonly bubbles = { mine: h('div', 'emote-bubble'), theirs: h('div', 'emote-bubble emote-theirs') };
+  private readonly bubbleTimers = { mine: 0, theirs: 0 };
+  private emoteReadyAt = 0;
+  // The message button and its list are kept between renders, so the list stays open while the screen updates.
+  private readonly messageToggle: HTMLButtonElement;
+  private readonly messageMenu: HTMLElement;
+  private readonly messageControl: HTMLElement;
+  private messageMenuOpen = false;
+
+  constructor(private readonly host: OnlineHost) {
+    for (const bubble of Object.values(this.bubbles)) bubble.setAttribute('aria-hidden', 'true');
+
+    this.messageToggle = button('', () => this.setMessageMenu(!this.messageMenuOpen), 'btn-small btn-quiet btn-icon');
+    this.messageToggle.append(icon('icon-message', 'icon'));
+    this.messageToggle.setAttribute('aria-label', 'Send a message');
+    this.messageToggle.title = 'Send a message';
+    this.messageToggle.setAttribute('aria-controls', 'message-menu');
+    const choices = (Object.keys(EMOTES) as EmoteId[]).map((emote) =>
+      button(EMOTES[emote], () => {
+        this.sendEmote(emote);
+        this.setMessageMenu(false);
+        this.messageToggle.focus();
+      }, 'btn-small message-choice'),
+    );
+    this.messageMenu = h('div', 'message-menu', ...choices);
+    this.messageMenu.id = 'message-menu';
+    this.messageMenu.setAttribute('role', 'group');
+    this.messageMenu.setAttribute('aria-label', 'Messages');
+    this.messageControl = h('div', 'message-control', this.messageToggle, this.messageMenu);
+    this.setMessageMenu(false);
+
+    // Clicking anywhere else, or pressing Escape, closes the list.
+    document.addEventListener('click', (event) => {
+      if (this.messageMenuOpen && !this.messageControl.contains(event.target as Node)) this.setMessageMenu(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && this.messageMenuOpen) {
+        this.setMessageMenu(false);
+        this.messageToggle.focus();
+      }
+    });
+  }
+
+  private setMessageMenu(open: boolean): void {
+    this.messageMenuOpen = open;
+    this.messageMenu.hidden = !open;
+    this.messageToggle.setAttribute('aria-expanded', String(open));
+    if (open) this.messageMenu.querySelector('button')?.focus();
+  }
+
+  // True when a match from before a page reload may still be waiting for this player.
+  canRejoin(): boolean {
+    return this.session !== null;
+  }
+
+  rejoinSaved(): void {
+    const session = this.session;
+    if (!session) return;
+    this.open({ type: 'rejoin', code: session.code, token: session.token });
+  }
+
+  // Leaves the current match, if any, and closes the connection. Safe to call at any time.
   dispose(): void {
+    window.clearTimeout(this.retryTimer);
+    this.reconnecting = false;
+    if (this.active) {
+      this.connection?.send({ type: 'leave' });
+      this.session = null;
+      storeSession(null);
+    }
+    this.active = false;
+    this.connected = false;
     this.connection?.close();
     this.connection = null;
   }
@@ -100,28 +228,116 @@ export class OnlineGame {
     this.host.announce(`${title}. ${text}`);
   }
 
+  // Like notice(), but with a sweeping radar, for screens that wait on the server or the opponent.
+  private waiting(title: string, text: string, ...actions: HTMLButtonElement[]): void {
+    this.radarScreen('pass-icon radar-sweep', title, text, actions);
+  }
+
+  // A slow red sweep: the signal is gone, but Retry can look for it again.
+  private lostSignal(title: string, text: string, ...actions: HTMLButtonElement[]): void {
+    this.radarScreen('pass-icon radar-sweep radar-lost', title, text, actions);
+  }
+
+  private radarScreen(radarClass: string, title: string, text: string, actions: HTMLButtonElement[]): void {
+    const radar = h('div', radarClass);
+    radar.setAttribute('aria-hidden', 'true');
+    this.host.showFresh(
+      h(
+        'div',
+        'menu',
+        radar,
+        h('h1', 'heading', title),
+        h('p', 'menu-prompt', text),
+        h('div', 'menu-buttons', ...actions),
+      ),
+    );
+    this.host.announce(`${title}. ${text}`);
+  }
+
   private open(first: ClientMessage): void {
     this.dispose();
+    this.lastAttempt = first;
+    this.retry = 0;
+    if (first.type === 'rejoin') {
+      // dispose() forgot the seat; keep it while trying to get back in.
+      this.session = { code: first.code, token: first.token };
+      storeSession(this.session);
+    }
     this.phase = 'connecting';
     this.opponentLeft = false;
-    this.notice(
+    this.active = true;
+    this.waiting(
       'Connecting…',
       'The first connection can take up to a minute while the server wakes up.',
       button('Cancel', () => this.showLobby(), 'btn-quiet'),
     );
+    this.connect(first);
+  }
+
+  private connect(first: ClientMessage): void {
+    let opened = false;
     this.connection = new Connection({
-      onOpen: () => this.connection?.send(first),
+      onOpen: () => {
+        opened = true;
+        this.connection?.send(first);
+      },
       onMessage: (message) => this.handle(message),
-      onClose: () => this.handleDrop(),
+      onClose: () => this.handleDrop(opened),
     });
   }
 
-  private handleDrop(): void {
+  // ---------- Dropped connections ----------
+
+  // `opened` is false when the server could not be reached at all.
+  private handleDrop(opened: boolean): void {
     this.connection = null;
-    this.notice(
+    this.connected = false;
+    if (this.inMatch() && this.session && !this.opponentLeft) {
+      this.scheduleReconnect();
+      return;
+    }
+    this.giveUp(
+      opened
+        ? 'The connection to the server was lost.'
+        : 'Could not reach the game server. Check your internet connection, then try again.',
+    );
+  }
+
+  private inMatch(): boolean {
+    return this.phase === 'placing' || this.phase === 'battle' || this.phase === 'over';
+  }
+
+  private scheduleReconnect(): void {
+    if (this.retry >= RETRY_DELAYS_MS.length) {
+      this.giveUp('Could not reconnect to the game.');
+      return;
+    }
+    if (!this.reconnecting) {
+      this.reconnecting = true;
+      this.message = 'Connection lost. Reconnecting…';
+      this.host.announce(this.message);
+      if (this.phase === 'battle' || this.phase === 'over') this.renderBattle();
+    }
+    const session = this.session;
+    this.retryTimer = window.setTimeout(() => {
+      if (!session || !this.reconnecting) return;
+      this.retry++;
+      this.connect({ type: 'rejoin', code: session.code, token: session.token });
+    }, RETRY_DELAYS_MS[this.retry]);
+  }
+
+  // Retry rejoins the match if there was one, otherwise repeats the last attempt (host or join).
+  private giveUp(text: string): void {
+    const session = this.inMatch() ? this.session : null;
+    const attempt = this.lastAttempt;
+    this.dispose();
+    const retry = session
+      ? () => this.open({ type: 'rejoin', code: session.code, token: session.token })
+      : () => this.open(attempt);
+    this.lostSignal(
       'Connection lost',
-      'The connection to the server was lost.',
-      button('Back to Lobby', () => this.showLobby()),
+      text,
+      button('Retry', retry, 'btn-green'),
       button('Main Menu', () => this.host.quit(), 'btn-quiet'),
     );
   }
@@ -131,16 +347,25 @@ export class OnlineGame {
   private handle(message: ServerMessage): void {
     switch (message.type) {
       case 'created':
+        this.saveSession(message.code, message.token);
         this.phase = 'waiting';
-        this.notice(
+        this.connected = true;
+        this.waiting(
           `Game code: ${message.code}`,
           'Share this code with your friend. The game starts when they join.',
           button('Cancel', () => this.showLobby(), 'btn-quiet'),
         );
         break;
       case 'matched':
+        this.saveSession(message.code, message.token);
+        this.connected = true;
+        this.beginPlacement();
+        break;
       case 'rematchStart':
         this.beginPlacement();
+        break;
+      case 'resume':
+        this.resume(message);
         break;
       case 'opponentReady':
         this.host.announce('Your opponent has placed their fleet.');
@@ -156,6 +381,17 @@ export class OnlineGame {
         this.host.announce(this.message);
         if (this.phase === 'over') this.renderBattle();
         break;
+      case 'opponentDisconnected':
+        this.opponentAway = true;
+        this.setMessage(`Your opponent lost connection. Waiting up to ${message.seconds} seconds for them…`);
+        break;
+      case 'opponentReconnected':
+        this.opponentAway = false;
+        this.setMessage('Your opponent is back.');
+        break;
+      case 'emote':
+        this.showEmote('theirs', message.emote);
+        break;
       case 'opponentLeft':
         this.handleOpponentLeft();
         break;
@@ -165,19 +401,48 @@ export class OnlineGame {
     }
   }
 
+  private saveSession(code: string, token: string): void {
+    this.session = { code, token };
+    storeSession(this.session);
+  }
+
+  // Shows a status line on the battle screen, or just announces it elsewhere.
+  private setMessage(text: string): void {
+    this.message = text;
+    this.host.announce(text);
+    if (this.phase === 'battle' || this.phase === 'over') this.renderBattle();
+  }
+
   private handleError(text: string): void {
-    if (this.phase === 'connecting' || this.phase === 'waiting') {
-      this.notice('Could not join', text, button('Back to Lobby', () => this.showLobby()));
+    // A rejoin was refused: the match is over for good (the grace period ran out, or the server restarted),
+    // so Retry would never work.
+    if (this.reconnecting || (this.phase === 'connecting' && this.lastAttempt.type === 'rejoin')) {
       this.dispose();
+      this.notice(
+        'Game ended',
+        'The game ended while you were disconnected.',
+        button('Back to Lobby', () => this.showLobby(), 'btn-green'),
+        button('Main Menu', () => this.host.quit(), 'btn-quiet'),
+      );
+      return;
+    }
+    if (this.phase === 'connecting' || this.phase === 'waiting') {
+      this.dispose();
+      const title = this.phase === 'waiting' ? 'Game closed' : 'Could not join';
+      this.notice(title, text, button('Back to Lobby', () => this.showLobby()));
       return;
     }
     this.host.announce(text);
-    if (this.phase === 'battle') {
+    if (this.phase === 'battle' && this.awaitingShot) {
       // The shot was refused, so let the player try again.
       this.message = text;
-      this.myTurn = this.awaitingShot;
+      this.myTurn = true;
       this.awaitingShot = false;
       this.renderBattle();
+    } else if (this.phase === 'placing' && this.fleetSent) {
+      // The fleet was refused: go back to placing it.
+      this.fleetSent = false;
+      this.host.startPlacement(this.own, () => this.sendFleet());
     }
   }
 
@@ -192,10 +457,66 @@ export class OnlineGame {
     }
     this.notice(
       'Opponent left',
-      'Your opponent disconnected.',
+      'Your opponent left the game.',
       button('Back to Lobby', () => this.showLobby()),
       button('Main Menu', () => this.host.quit(), 'btn-quiet'),
     );
+  }
+
+  // ---------- Reconnecting ----------
+
+  private resume(state: ResumeState): void {
+    const wasReconnecting = this.reconnecting;
+    this.reconnecting = false;
+    this.retry = 0;
+    this.connected = true;
+    this.opponentAway = !state.opponentConnected;
+    this.opponentLeft = false;
+
+    if (state.phase === 'placing') {
+      if (state.fleet) {
+        this.phase = 'placing';
+        this.own = boardFromFleet(state.fleet) ?? new Board();
+        this.fleetSent = true;
+        this.showFleetReady();
+      } else if (this.phase === 'placing' && this.fleetSent) {
+        // The fleet was sent while the connection was down: send it again.
+        this.sendFleet();
+      } else if (this.phase !== 'placing') {
+        this.beginPlacement();
+      }
+      // Otherwise the player is still on the placement screen, which carries on as it was.
+      if (wasReconnecting) this.host.announce('Reconnected.');
+      return;
+    }
+
+    const own = state.fleet ? boardFromFleet(state.fleet) : null;
+    if (!own) {
+      this.giveUp('The game could not be restored.');
+      return;
+    }
+    this.own = own;
+    this.enemy = new Board();
+    this.stats = new MatchStats();
+    this.tally = null;
+    this.awaitingShot = false;
+    this.fleetSent = true;
+    for (const shot of state.shots) this.recordShot(shot);
+    for (const ship of state.enemyFleet ?? []) this.reveal(this.enemy, ship);
+    this.phase = state.phase;
+    this.myTurn = state.phase === 'battle' && state.yourTurn;
+    this.won = state.phase === 'over' && state.shots.at(-1)?.byYou === true;
+    if (state.phase === 'over') this.stats.finish();
+    this.rematchSent = state.rematchSent;
+    this.lastTarget = undefined;
+
+    const parts = [wasReconnecting ? 'Reconnected.' : 'Back in the game.'];
+    if (this.opponentAway) parts.push('Waiting for your opponent to reconnect…');
+    else if (state.rematchRequested) parts.push('Your opponent wants a rematch.');
+    else if (state.phase === 'battle') parts.push(this.myTurn ? 'Your turn.' : 'Your opponent’s turn.');
+    this.message = parts.join(' ');
+    this.host.announce(this.message);
+    this.renderBattle(true);
   }
 
   // ---------- Placement ----------
@@ -204,18 +525,27 @@ export class OnlineGame {
     this.phase = 'placing';
     this.own = new Board();
     this.enemy = new Board();
+    this.stats = new MatchStats();
+    this.tally = null;
     this.myTurn = false;
     this.won = false;
     this.message = '';
     this.lastTarget = undefined;
     this.awaitingShot = false;
+    this.fleetSent = false;
     this.rematchSent = false;
     this.host.startPlacement(this.own, () => this.sendFleet());
   }
 
   private sendFleet(): void {
+    this.fleetSent = true;
+    // While reconnecting this is dropped; resume() sends it again once the connection is back.
     this.connection?.send({ type: 'ready', fleet: this.own.ships.map(toPlacement) });
-    this.notice(
+    this.showFleetReady();
+  }
+
+  private showFleetReady(): void {
+    this.waiting(
       'Fleet ready',
       'Waiting for your opponent to finish placing their ships…',
       button('Quit', () => this.host.quit(), 'btn-quiet'),
@@ -227,13 +557,14 @@ export class OnlineGame {
   private beginBattle(yourTurn: boolean): void {
     this.phase = 'battle';
     this.myTurn = yourTurn;
+    this.stats = new MatchStats();
     this.message = yourTurn ? 'You fire first. Choose a square on the enemy grid.' : 'Your opponent fires first.';
     this.host.announce(this.message);
     this.renderBattle(true);
   }
 
   private fireAt(cell: Coord): void {
-    if (!this.myTurn || this.phase !== 'battle') return;
+    if (!this.myTurn || this.phase !== 'battle' || !this.connected) return;
     this.lastTarget = cell;
     this.myTurn = false;
     this.awaitingShot = true;
@@ -248,15 +579,22 @@ export class OnlineGame {
     board.place(spec, { x: ship.x, y: ship.y }, ship.orientation);
   }
 
-  private applyShot(shot: Extract<ServerMessage, { type: 'shot' }>): void {
+  // Applies a shot to the boards and stats, without touching the screen.
+  private recordShot(shot: ShotRecord): void {
     const cell = { x: shot.x, y: shot.y };
-    const square = coordLabel(cell);
     if (shot.byYou) {
       this.enemy.recordShot(cell, shot.result === 'miss' ? 'miss' : 'hit');
       if (shot.sunk) this.reveal(this.enemy, shot.sunk);
     } else {
       this.own.fire(cell);
     }
+    this.stats.record(shot.byYou ? 0 : 1, shot.result);
+  }
+
+  private applyShot(shot: Extract<ServerMessage, { type: 'shot' }>): void {
+    const cell = { x: shot.x, y: shot.y };
+    const square = coordLabel(cell);
+    this.recordShot(shot);
     for (const ship of shot.fleet ?? []) this.reveal(this.enemy, ship);
 
     this.awaitingShot = false;
@@ -264,6 +602,8 @@ export class OnlineGame {
       this.phase = 'over';
       this.won = shot.byYou;
       this.myTurn = false;
+      this.stats.finish();
+      this.tally = addResult('online', shot.byYou);
     } else {
       this.myTurn = !shot.byYou;
     }
@@ -285,6 +625,30 @@ export class OnlineGame {
     }
   }
 
+  // ---------- Emotes ----------
+
+  private sendEmote(emote: EmoteId): void {
+    const now = Date.now();
+    if (!this.connected || now < this.emoteReadyAt) return;
+    this.emoteReadyAt = now + EMOTE_GAP_MS;
+    this.connection?.send({ type: 'emote', emote });
+    this.showEmote('mine', emote);
+  }
+
+  private showEmote(side: 'mine' | 'theirs', emote: EmoteId): void {
+    const bubble = this.bubbles[side];
+    bubble.textContent = EMOTES[emote];
+    // Restart the pop-in animation even if a bubble is already showing.
+    bubble.classList.remove('is-visible');
+    void bubble.offsetWidth;
+    bubble.classList.add('is-visible');
+    window.clearTimeout(this.bubbleTimers[side]);
+    this.bubbleTimers[side] = window.setTimeout(() => bubble.classList.remove('is-visible'), EMOTE_SHOW_MS);
+    if (side === 'theirs') this.host.announce(`Your opponent says: ${EMOTES[emote]}`);
+  }
+
+  // ---------- Screen ----------
+
   private banner(): HTMLElement {
     if (this.phase === 'over') {
       return h('div', `banner ${this.won ? 'banner-victory' : 'banner-defeat'}`, this.won ? 'Victory!' : 'Defeat!');
@@ -304,9 +668,25 @@ export class OnlineGame {
     return h('ul', 'status-list', ...items);
   }
 
+  // The status line. While waiting on a connection, its trailing "…" becomes animated dots.
+  private messageLine(): HTMLElement {
+    const trying = this.reconnecting || this.opponentAway;
+    if (!trying) return h('p', 'message', this.message);
+    const line = h('p', 'message message-warning', this.message);
+    if (this.message.endsWith('…')) {
+      const dots = h('span', 'dots', h('span', 'dots-inner', '...'));
+      dots.setAttribute('aria-hidden', 'true');
+      line.replaceChildren(this.message.slice(0, -1), dots);
+    }
+    return line;
+  }
+
   private renderBattle(fresh = false): { own: BoardView; enemy: BoardView } {
     const over = this.phase === 'over';
-    const canFire = this.myTurn && !over;
+    const canFire = this.myTurn && !over && this.connected;
+    // Messages need someone on the other end.
+    const canMessage = this.connected && !this.opponentLeft;
+    if (!canMessage) this.setMessageMenu(false);
 
     const own = createBoardView({ board: this.own, mode: 'static', label: 'Your fleet', showShip: () => true });
     const enemy = createBoardView({
@@ -326,39 +706,62 @@ export class OnlineGame {
         this.connection?.send({ type: 'rematch' });
         this.renderBattle();
       }, 'btn-green');
-      rematch.disabled = this.rematchSent || this.opponentLeft;
+      rematch.disabled = this.rematchSent || this.opponentLeft || !this.connected;
       controls.append(rematch, button('Main Menu', () => this.host.quit()));
     }
 
-    const content = [
+    const content: Node[] = [
       h(
         'header',
         'topbar',
         h('p', 'brand', icon('icon-anchor', 'icon'), 'Battle Ship'),
         this.banner(),
-        button('Quit', () => this.host.quit(), 'btn-small btn-quiet'),
+        h(
+          'div',
+          'topbar-actions',
+          ...(canMessage ? [this.messageControl] : []),
+          muteButton(this.host.settings),
+          button('Quit', () => this.host.quit(), 'btn-small btn-quiet'),
+        ),
       ),
-      h('p', 'message', this.message),
+      this.messageLine(),
       controls,
+    ];
+    if (over) {
+      content.push(
+        statsPanel(
+          this.stats,
+          ['You', 'Opponent'],
+          this.tally ? { label: 'Your online record', tally: this.tally } : undefined,
+        ),
+      );
+    }
+    content.push(
       h(
         'div',
         'battlefield',
         h(
           'section',
           'board-panel',
-          h('h2', 'board-title', icon('icon-flag-blue', 'icon'), 'Your Fleet'),
+          h('h2', 'board-title', icon('icon-flag-blue', 'icon'), 'Your Fleet', this.bubbles.mine),
           own.element,
           this.fleetStatus(this.own),
         ),
         h(
           'section',
           'board-panel',
-          h('h2', 'board-title', icon('icon-flag-red', 'icon'), over ? 'Enemy Fleet' : 'Enemy Waters'),
+          h(
+            'h2',
+            'board-title',
+            icon('icon-flag-red', 'icon'),
+            over ? 'Enemy Fleet' : 'Enemy Waters',
+            this.bubbles.theirs,
+          ),
           enemy.element,
           this.fleetStatus(this.enemy),
         ),
       ),
-    ];
+    );
     if (fresh) this.host.showFresh(...content);
     else this.host.show(...content);
     if (canFire && !fresh && this.lastTarget) enemy.focusCell(this.lastTarget);
