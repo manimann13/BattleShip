@@ -18,6 +18,7 @@ import { button, h, icon } from './dom';
 import { type Tally, addGoldAnchor, addResult } from './record';
 import type { Settings } from './settings';
 import { playShotSound } from './sound';
+import { qrCode } from './qr';
 import { banner, battleScreen } from './battleView';
 import { statsPanel } from './statsView';
 import { setMusicTrack } from './music';
@@ -46,6 +47,55 @@ interface Session {
 }
 
 const CODE_LENGTH = 4;
+
+// An invite link opens the game straight into the Online lobby with this code filled in.
+export function inviteLink(code: string): string {
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('join', code);
+  return url.toString();
+}
+
+// Copies text to the clipboard, falling back to the older copy command where the clipboard API is
+// blocked. Resolves to whether it worked.
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.append(area);
+    area.select();
+    let copied = false;
+    try {
+      copied = document.execCommand('copy');
+    } catch {
+      copied = false;
+    }
+    area.remove();
+    return copied;
+  }
+}
+
+// Reads an invite code from the page address (?join=ABCD) and removes it, so a reload or a later
+// visit does not open the invite again. Returns null when there is none or it is not a code.
+export function takeInviteCode(): string | null {
+  try {
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get('join')?.trim().toUpperCase() ?? '';
+    if (!url.searchParams.has('join')) return null;
+    url.searchParams.delete('join');
+    window.history.replaceState(null, '', url.toString());
+    return new RegExp(`^[A-Z]{${CODE_LENGTH}}$`).test(code) ? code : null;
+  } catch {
+    return null;
+  }
+}
 const SESSION_KEY = 'battleship-online';
 // Waits between reconnect attempts, about 60 seconds in all: as long as the server keeps a seat.
 const RETRY_DELAYS_MS = [500, 1000, 2000, 4000, 8000, 8000, 8000, 8000, 8000, 8000, 5000];
@@ -183,7 +233,8 @@ export class OnlineGame {
 
   // ---------- Lobby ----------
 
-  showLobby(): void {
+  // With an invite code, the code box is filled in and Join Game is the main button.
+  showLobby(invite?: string): void {
     this.dispose();
     const input = h('input', 'text-input');
     input.type = 'text';
@@ -193,6 +244,7 @@ export class OnlineGame {
     input.autocapitalize = 'characters';
     input.spellcheck = false;
     input.setAttribute('aria-label', 'Game code');
+    if (invite) input.value = invite;
     const join = () => {
       const code = input.value.trim().toUpperCase();
       if (code.length === CODE_LENGTH) this.open({ type: 'join', code });
@@ -205,21 +257,25 @@ export class OnlineGame {
     this.host.showFresh(
       this.host.plaque(
         h('h1', 'heading', 'Play Online'),
-        h('p', 'menu-prompt', 'Play a friend on another device.'),
+        h('p', 'menu-prompt', invite ? 'You’ve been invited to a game!' : 'Play a friend on another device.'),
         h(
           'div',
           'menu-buttons',
-          button('Host a Game', () => this.open({ type: 'create' }), 'btn-green'),
-          h('p', 'hint', 'or enter a friend’s code'),
-          input,
-          button('Join Game', join),
+          ...(invite
+            ? [input, button('Join Game', join, 'btn-green'), h('p', 'hint', 'or start your own'), button('Host a Game', () => this.open({ type: 'create' }))]
+            : [
+                button('Host a Game', () => this.open({ type: 'create' }), 'btn-green'),
+                h('p', 'hint', 'or enter a friend’s code'),
+                input,
+                button('Join Game', join),
+              ]),
           button('Back', () => this.host.showModes(), 'btn-quiet'),
         ),
       ),
     );
   }
 
-  private notice(title: string, text: string, ...actions: HTMLButtonElement[]): void {
+  private notice(title: string, text: string, ...actions: HTMLElement[]): void {
     this.host.showFresh(
       this.host.plaque(
         icon('icon-radar', 'pass-icon'),
@@ -232,16 +288,16 @@ export class OnlineGame {
   }
 
   // Like notice(), but with a sweeping radar, for screens that wait on the server or the opponent.
-  private waiting(title: string, text: string, ...actions: HTMLButtonElement[]): void {
+  private waiting(title: string, text: string, ...actions: HTMLElement[]): void {
     this.radarScreen('pass-icon radar-sweep', title, text, actions);
   }
 
   // A slow red sweep: the signal is gone, but Retry can look for it again.
-  private lostSignal(title: string, text: string, ...actions: HTMLButtonElement[]): void {
+  private lostSignal(title: string, text: string, ...actions: HTMLElement[]): void {
     this.radarScreen('pass-icon radar-sweep radar-lost', title, text, actions);
   }
 
-  private radarScreen(radarClass: string, title: string, text: string, actions: HTMLButtonElement[]): void {
+  private radarScreen(radarClass: string, title: string, text: string, actions: HTMLElement[]): void {
     const radar = h('div', radarClass);
     radar.setAttribute('aria-hidden', 'true');
     this.host.showFresh(
@@ -250,6 +306,22 @@ export class OnlineGame {
         h('h1', 'heading', title),
         h('p', 'menu-prompt', text),
         h('div', 'menu-buttons', ...actions),
+      ),
+    );
+    this.host.announce(`${title}. ${text}`);
+  }
+
+  // The host's waiting screen: the code, a QR code right under it for a friend's phone camera, then
+  // Share Invite and Cancel.
+  private showHosting(code: string): void {
+    const title = `Game code: ${code}`;
+    const text = 'Scan the code, send the invite link, or tell your friend the code. The game starts when they join.';
+    this.host.showFresh(
+      this.host.plaque(
+        h('h1', 'heading', title),
+        qrCode(inviteLink(code), `QR code that opens the invite to game ${code}`),
+        h('p', 'menu-prompt invite-text', text),
+        h('div', 'menu-buttons', ...this.inviteButtons(code), button('Cancel', () => this.showLobby(), 'btn-quiet')),
       ),
     );
     this.host.announce(`${title}. ${text}`);
@@ -343,6 +415,72 @@ export class OnlineGame {
     );
   }
 
+  // Share Invite opens a small menu: Copy Link, and More Options, which opens the device's own share
+  // sheet (on iPhone, iPad and Macs the Apple one with Messages, AirDrop, Mail and the rest). Browsers
+  // without a share sheet get Email instead. Every option sends a link that opens the lobby with the
+  // code filled in.
+  private inviteButtons(code: string): HTMLElement[] {
+    const url = inviteLink(code);
+    const text = `Join my Battle Ship game! Code: ${code}`;
+    const menu = this.shareMenu(url, text);
+    menu.hidden = true;
+    const share = button('Share Invite', () => {
+      menu.hidden = !menu.hidden;
+      share.setAttribute('aria-expanded', String(!menu.hidden));
+      if (!menu.hidden) menu.querySelector<HTMLElement>('button, a')?.focus();
+    }, 'btn-green');
+    menu.id = 'share-menu';
+    share.setAttribute('aria-controls', menu.id);
+    share.setAttribute('aria-expanded', 'false');
+    return [share, menu];
+  }
+
+  // The share menu for browsers without a share sheet.
+  private shareMenu(url: string, text: string): HTMLElement {
+    const message = `${text} ${url}`;
+    let resetTimer = 0;
+    const copy = button('Copy Link', async () => {
+      const copied = await copyText(url);
+      window.clearTimeout(resetTimer);
+      if (copied) {
+        copy.textContent = 'Link Copied!';
+        this.host.announce('Invite link copied.');
+        resetTimer = window.setTimeout(() => {
+          copy.textContent = 'Copy Link';
+        }, 2000);
+        return;
+      }
+      // The browser would not copy: show the link so it can be copied by hand.
+      const box = h('input', 'text-input invite-link');
+      box.readOnly = true;
+      box.value = url;
+      box.setAttribute('aria-label', 'Invite link');
+      copy.replaceWith(box);
+      box.focus();
+      box.select();
+      this.host.announce(`Copy this invite link: ${url}`);
+    }, 'btn-small');
+    const link = (label: string, href: string) => {
+      const a = h('a', 'btn btn-small', label);
+      a.href = href;
+      return a;
+    };
+    // More Options opens the device's share sheet: the iOS one on iPhone and iPad, the macOS share
+    // menu in Safari on a Mac. Browsers without one (such as Chrome on Windows) get Email instead.
+    const other =
+      typeof navigator.share === 'function'
+        ? button('More Options…', () => {
+            navigator.share({ title: 'Battle Ship', text, url }).catch(() => {
+              // Closing the share sheet is not an error.
+            });
+          }, 'btn-small')
+        : link('Email', `mailto:?subject=${encodeURIComponent('Join my Battle Ship game')}&body=${encodeURIComponent(message)}`);
+    const menu = h('div', 'share-menu', h('p', 'hint', 'Send the invite by'), copy, other);
+    menu.setAttribute('role', 'group');
+    menu.setAttribute('aria-label', 'Share the invite');
+    return menu;
+  }
+
   // ---------- Messages ----------
 
   private handle(message: ServerMessage): void {
@@ -351,11 +489,7 @@ export class OnlineGame {
         this.saveSession(message.code, message.token);
         this.phase = 'waiting';
         this.connected = true;
-        this.waiting(
-          `Game code: ${message.code}`,
-          'Share this code with your friend. The game starts when they join.',
-          button('Cancel', () => this.showLobby(), 'btn-quiet'),
-        );
+        this.showHosting(message.code);
         break;
       case 'matched':
         this.saveSession(message.code, message.token);

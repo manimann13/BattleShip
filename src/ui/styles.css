@@ -1709,3 +1709,74 @@ button.cell[aria-disabled='true'] {
     --board-size: max(300px, min(420px, calc((100vw - 200px) / 2), calc(100vh - 330px)));
   }
 }
+
+/* An invite link shown for copying by hand when the browser will not copy it. */
+.text-input.invite-link {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 14px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* The share menu under Share Invite, for browsers without a share sheet. */
+.share-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 2px solid rgba(168, 124, 44, 0.6);
+  border-radius: 4px;
+  transform-origin: top center;
+  animation: plaque-open 0.2s ease-out both;
+}
+
+.share-menu[hidden] {
+  display: none;
+}
+
+.share-menu .hint {
+  margin: 0;
+  font-size: 15px;
+  color: #e9c87a;
+}
+
+a.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .share-menu {
+    animation: none;
+  }
+}
+
+/* The QR code under the game code: pale parchment with dark ink, in a brass frame. */
+.invite-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.qr-canvas {
+  width: clamp(132px, 34vw, 168px);
+  height: auto;
+  image-rendering: pixelated;
+  border: 3px solid #a87c2c;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 2px #2a1d08, 0 4px 0 rgba(0, 0, 0, 0.4);
+}
+
+.invite-qr figcaption {
+  font-size: 14px;
+  color: #e9c87a;
+}
+
+.menu-prompt.invite-text {
+  font-size: 17px;
+}
