@@ -1,6 +1,9 @@
+import type { Difficulty } from '../ai/computer';
+
 export type ComputerSpeed = 'slow' | 'normal' | 'fast';
 
 export interface Settings {
+  difficulty: Difficulty;
   computerSpeed: ComputerSpeed;
   animations: boolean;
   gridLabels: boolean;
@@ -8,6 +11,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
+  difficulty: 'normal',
   computerSpeed: 'normal',
   animations: true,
   gridLabels: true,
@@ -32,7 +36,12 @@ export function parseSettings(raw: string | null): Settings {
     // Corrupt data: keep the defaults.
   }
   const speed = saved.computerSpeed;
+  const difficulty = saved.difficulty;
   return {
+    difficulty:
+      difficulty === 'easy' || difficulty === 'normal' || difficulty === 'hard'
+        ? difficulty
+        : DEFAULT_SETTINGS.difficulty,
     computerSpeed:
       speed === 'slow' || speed === 'normal' || speed === 'fast' ? speed : DEFAULT_SETTINGS.computerSpeed,
     animations: typeof saved.animations === 'boolean' ? saved.animations : DEFAULT_SETTINGS.animations,

@@ -415,6 +415,44 @@ function radar() {
   return s;
 }
 
+// One frame of the animated radar: the beam points at `beam` radians (0 = right, clockwise),
+// with a fading trail behind it, and blips that light up as the beam passes and then fade.
+const RADAR_FRAMES = 16;
+const RADAR_BLIPS = [[21, 8], [8, 19], [22, 21], [11, 9]];
+
+function radarFrame(beam) {
+  const s = new Sprite(TILE, TILE);
+  const c = 15.5;
+  const behind = (x, y) => {
+    const angle = Math.atan2(y - c, x - c);
+    return (((beam - angle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  };
+  s.circle(c, c, 15, '#2f9e58');
+  s.circle(c, c, 13.5, '#07241a');
+  for (let y = 0; y < TILE; y++) {
+    for (let x = 0; x < TILE; x++) {
+      if (Math.hypot(x - c, y - c) > 13) continue;
+      const d = behind(x, y);
+      if (d < 0.4) s.set(x, y, '#2fbf6a');
+      else if (d < 0.9) s.set(x, y, '#1f8f4d');
+      else if (d < 1.5) s.set(x, y, '#145f36');
+    }
+  }
+  s.ring(c, c, 9, 1, '#2f9e58');
+  s.ring(c, c, 5, 1, '#2f9e58');
+  s.line(3, 16, 28, 16, '#1b6b3e');
+  s.line(16, 3, 16, 28, '#1b6b3e');
+  for (const [x, y] of RADAR_BLIPS) {
+    const d = behind(x + 1, y + 1);
+    if (d < 0.9) s.rect(x, y, 2, 2, '#d8ffe4');
+    else if (d < 2.4) s.rect(x, y, 2, 2, '#6fe39a');
+    else if (d < 3.6) s.rect(x, y, 2, 2, '#2f9e58');
+  }
+  s.line(16, 16, Math.round(16 + Math.cos(beam) * 12), Math.round(16 + Math.sin(beam) * 12), '#b8ffcc');
+  s.rect(15, 15, 2, 2, '#d8ffe4');
+  return s;
+}
+
 function crosshair() {
   const s = new Sprite(TILE, TILE);
   s.ring(15.5, 15.5, 9, 2, '#e8eef5');
@@ -467,6 +505,19 @@ function speaker(muted) {
     s.rect(23, 11, 2, 10, '#8a97a7');
     s.rect(27, 8, 2, 16, '#8a97a7');
   }
+  return s;
+}
+
+// Speech bubble with three dots, for the quick-message button.
+function message() {
+  const s = new Sprite(TILE, TILE);
+  const edge = '#8a97a7';
+  const fill = '#e8eef5';
+  s.rect(5, 5, 22, 16, edge).rect(4, 6, 24, 14, edge);
+  s.rect(6, 6, 20, 14, fill).rect(5, 7, 22, 12, fill);
+  s.polygon([[9, 20], [16, 20], [8, 27]], edge);
+  s.polygon([[10, 20], [14, 20], [9, 25]], fill);
+  for (const x of [10, 15, 20]) s.rect(x, 12, 3, 3, '#3a5a80');
   return s;
 }
 
@@ -525,11 +576,17 @@ save('reticle-yellow', corners(new Sprite(TILE, TILE), '#ffd23c', 8, 2, 3));
 save('reticle-red', corners(new Sprite(TILE, TILE), '#ee4a3c', 8, 3, 2));
 
 save('icon-radar', radar());
+const radarStrip = new Sprite(TILE * RADAR_FRAMES, TILE);
+for (let i = 0; i < RADAR_FRAMES; i++) {
+  radarStrip.blit(radarFrame(-Math.PI / 2 + (i * 2 * Math.PI) / RADAR_FRAMES), TILE * i);
+}
+save('radar-strip', radarStrip);
 save('icon-crosshair', crosshair());
 save('icon-anchor', anchor());
 save('icon-gear', gear());
 save('icon-sound-on', speaker(false));
 save('icon-sound-off', speaker(true));
+save('icon-message', message());
 save('icon-flag-blue', flag('#3f7fe0', '#2c5fb5'));
 save('icon-flag-red', flag('#e8473c', '#b5302a'));
 

@@ -10,16 +10,56 @@ export interface ShipPlacement {
   readonly orientation: Orientation;
 }
 
+// Quick messages players can send each other online. A fixed list, so there is no free text to moderate.
+export const EMOTES = {
+  luck: 'Good luck!',
+  nice: 'Nice shot!',
+  wow: 'Wow!',
+  gg: 'Good game!',
+} as const;
+
+export type EmoteId = keyof typeof EMOTES;
+
+const isEmote = (value: unknown): value is EmoteId => typeof value === 'string' && Object.hasOwn(EMOTES, value);
+
+// One shot of the current match, from the receiving player's point of view.
+export interface ShotRecord {
+  readonly byYou: boolean;
+  readonly x: number;
+  readonly y: number;
+  readonly result: ShotResult;
+  readonly sunk?: ShipPlacement;
+}
+
+// Everything a player needs to pick up a match again after reconnecting.
+export interface ResumeState {
+  readonly phase: 'placing' | 'battle' | 'over';
+  // The player's own fleet, or null if they have not placed it yet.
+  readonly fleet: ShipPlacement[] | null;
+  readonly yourTurn: boolean;
+  readonly shots: ShotRecord[];
+  // Set when the game is over: the opponent's whole fleet.
+  readonly enemyFleet?: ShipPlacement[];
+  readonly opponentConnected: boolean;
+  readonly rematchRequested: boolean;
+  readonly rematchSent: boolean;
+}
+
 export type ClientMessage =
   | { type: 'create' }
   | { type: 'join'; code: string }
+  | { type: 'rejoin'; code: string; token: string }
   | { type: 'ready'; fleet: ShipPlacement[] }
   | { type: 'fire'; x: number; y: number }
-  | { type: 'rematch' };
+  | { type: 'rematch' }
+  | { type: 'emote'; emote: EmoteId }
+  | { type: 'leave' };
 
 export type ServerMessage =
-  | { type: 'created'; code: string }
-  | { type: 'matched' }
+  // The token lets this player rejoin the room if their connection drops.
+  | { type: 'created'; code: string; token: string }
+  | { type: 'matched'; code: string; token: string }
+  | ({ type: 'resume' } & ResumeState)
   | { type: 'opponentReady' }
   | { type: 'start'; yourTurn: boolean }
   | {
@@ -37,6 +77,10 @@ export type ServerMessage =
   | { type: 'rematchRequested' }
   | { type: 'rematchStart' }
   | { type: 'opponentLeft' }
+  // The opponent's connection dropped; they have a short time to come back.
+  | { type: 'opponentDisconnected'; seconds: number }
+  | { type: 'opponentReconnected' }
+  | { type: 'emote'; emote: EmoteId }
   | { type: 'error'; message: string };
 
 export const toPlacement = (ship: PlacedShip): ShipPlacement => ({
@@ -70,7 +114,14 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   switch (message.type) {
     case 'create':
     case 'rematch':
+    case 'leave':
       return { type: message.type };
+    case 'rejoin':
+      return typeof message.code === 'string' && typeof message.token === 'string'
+        ? { type: 'rejoin', code: message.code, token: message.token }
+        : null;
+    case 'emote':
+      return isEmote(message.emote) ? { type: 'emote', emote: message.emote } : null;
     case 'join':
       return typeof message.code === 'string' ? { type: 'join', code: message.code } : null;
     case 'fire':
