@@ -47,6 +47,24 @@ body {
   min-height: 100%;
 }
 
+/* Game text, tiles and sprites can't be selected or dragged; the room-code box still can. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+img {
+  -webkit-user-drag: none;
+}
+
 body {
   min-height: 100vh;
   color: var(--ink);
@@ -884,22 +902,6 @@ button.cell[aria-disabled='true'] {
 .btn-icon .icon {
   width: 24px;
   height: 24px;
-}
-
-.difficulty-choice {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.difficulty-choice .btn {
-  width: 100%;
-}
-
-.difficulty-hint {
-  margin: 0;
-  font-size: 16px;
-  text-align: center;
 }
 
 .stats {
