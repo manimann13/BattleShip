@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type Peer, Room } from '../server/room';
 import { FLEET } from '../src/game/types';
 import { type ServerMessage, type ShipPlacement, boardFromFleet, parseClientMessage } from '../src/net/protocol';
@@ -11,16 +11,27 @@ const fleet: ShipPlacement[] = FLEET.map((spec, y) => ({
   orientation: 'horizontal',
 }));
 
-function fakePeer(): Peer & { messages: ServerMessage[] } {
+function fakePeer(): Peer & { messages: ServerMessage[]; closed: boolean } {
   const messages: ServerMessage[] = [];
-  return { messages, send: (message) => messages.push(message) };
+  const peer = {
+    messages,
+    closed: false,
+    send: (message: ServerMessage) => messages.push(message),
+    close: () => {
+      peer.closed = true;
+    },
+  };
+  return peer;
 }
 
+let tokenCount = 0;
+const makeToken = () => `token-${tokenCount++}`;
+
 // rng() < 0.5 means player 0 (the host) fires first.
-function startedRoom() {
+function startedRoom(onClose?: (room: Room) => void) {
   const host = fakePeer();
   const guest = fakePeer();
-  const room = new Room('ABCD', host, () => 0);
+  const room = new Room('ABCD', host, () => 0, { onClose, makeToken });
   room.join(guest);
   room.ready(0, fleet);
   room.ready(1, fleet);
@@ -32,9 +43,13 @@ describe('Room', () => {
     const host = fakePeer();
     const guest = fakePeer();
     const room = new Room('ABCD', host);
+    expect(host.messages[0]).toMatchObject({ type: 'created', code: 'ABCD' });
     expect(room.join(guest)).toBe(1);
-    expect(host.messages).toContainEqual({ type: 'matched' });
-    expect(guest.messages).toContainEqual({ type: 'matched' });
+    expect(host.messages).toContainEqual(expect.objectContaining({ type: 'matched', code: 'ABCD' }));
+    expect(guest.messages).toContainEqual(expect.objectContaining({ type: 'matched', code: 'ABCD' }));
+    const tokenOf = (peer: typeof host) =>
+      (peer.messages.find((message) => message.type === 'matched') as { token: string }).token;
+    expect(tokenOf(host)).not.toBe(tokenOf(guest));
     expect(room.join(fakePeer())).toBeNull();
   });
 
@@ -95,10 +110,147 @@ describe('Room', () => {
   });
 
   it('tells the remaining player when someone leaves', () => {
-    const { room, host } = startedRoom();
+    const onClose = vi.fn();
+    const { room, host } = startedRoom(onClose);
     room.leave(1);
     expect(host.messages.at(-1)).toEqual({ type: 'opponentLeft' });
     expect(room.closed).toBe(true);
+    expect(onClose).toHaveBeenCalledWith(room);
+  });
+});
+
+describe('Room reconnecting', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const tokenOf = (peer: ReturnType<typeof fakePeer>) =>
+    (peer.messages.find((message) => message.type === 'matched') as { token: string }).token;
+
+  it('keeps a dropped player\'s seat and lets them rejoin with the game state', () => {
+    vi.useFakeTimers();
+    const { room, host, guest } = startedRoom();
+    room.fire(0, 0, 0);
+    room.fire(1, 9, 9);
+
+    room.disconnect(1, guest);
+    expect(host.messages.at(-1)).toEqual({ type: 'opponentDisconnected', seconds: 60 });
+    vi.advanceTimersByTime(30_000);
+    expect(room.closed).toBe(false);
+
+    const back = fakePeer();
+    expect(room.rejoin(tokenOf(guest), back)).toBe(1);
+    expect(host.messages.at(-1)).toEqual({ type: 'opponentReconnected' });
+    expect(back.messages.at(-1)).toMatchObject({
+      type: 'resume',
+      phase: 'battle',
+      yourTurn: false,
+      opponentConnected: true,
+      shots: [
+        { byYou: false, x: 0, y: 0, result: 'hit' },
+        { byYou: true, x: 9, y: 9, result: 'miss' },
+      ],
+    });
+    expect((back.messages.at(-1) as { fleet: unknown[] }).fleet).toHaveLength(FLEET.length);
+    // The resume message must not leak the opponent's ships mid-game.
+    expect(JSON.parse(JSON.stringify(back.messages.at(-1)))).not.toHaveProperty('enemyFleet');
+
+    // The grace timer was cancelled, and play carries on with the new connection.
+    vi.advanceTimersByTime(60_000);
+    expect(room.closed).toBe(false);
+    room.fire(0, 1, 0);
+    expect(back.messages.at(-1)).toMatchObject({ type: 'shot', byYou: false, x: 1, y: 0 });
+  });
+
+  it('closes the room when the grace period runs out', () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    const { room, host, guest } = startedRoom(onClose);
+    room.disconnect(1, guest);
+    vi.advanceTimersByTime(60_000);
+    expect(room.closed).toBe(true);
+    expect(host.messages.at(-1)).toEqual({ type: 'opponentLeft' });
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(room.rejoin(tokenOf(guest), fakePeer())).toBeNull();
+  });
+
+  it('rejects a wrong token', () => {
+    const { room, guest } = startedRoom();
+    room.disconnect(1, guest);
+    expect(room.rejoin('not-a-token', fakePeer())).toBeNull();
+    room.leave(1);
+  });
+
+  it('closes the old connection when a player rejoins on a new one, and ignores its late drop', () => {
+    const { room, host, guest } = startedRoom();
+    const back = fakePeer();
+    room.rejoin(tokenOf(guest), back);
+    expect(guest.closed).toBe(true);
+    room.disconnect(1, guest);
+    expect(host.messages.at(-1)).toEqual({ type: 'opponentReconnected' });
+    expect(room.closed).toBe(false);
+  });
+
+  it('closes a room straight away if the host drops before anyone joins', () => {
+    const host = fakePeer();
+    const room = new Room('ABCD', host, () => 0, { makeToken });
+    room.disconnect(0, host);
+    expect(room.closed).toBe(true);
+  });
+});
+
+describe('Room expiry', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('closes a hosted game nobody joins after 10 minutes', () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    const host = fakePeer();
+    const room = new Room('ABCD', host, () => 0, { onClose, makeToken });
+    vi.advanceTimersByTime(9 * 60_000);
+    expect(room.closed).toBe(false);
+    vi.advanceTimersByTime(60_000);
+    expect(room.closed).toBe(true);
+    expect(host.messages.at(-1)).toMatchObject({ type: 'error' });
+    expect(host.closed).toBe(true);
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('closes a match after 30 minutes without a move, but not while players keep moving', () => {
+    vi.useFakeTimers();
+    const { room, host, guest } = startedRoom();
+    vi.advanceTimersByTime(29 * 60_000);
+    room.fire(0, 0, 0);
+    vi.advanceTimersByTime(29 * 60_000);
+    expect(room.closed).toBe(false);
+    vi.advanceTimersByTime(60_000);
+    expect(room.closed).toBe(true);
+    expect(host.messages.at(-1)).toMatchObject({ type: 'error' });
+    expect(guest.messages.at(-1)).toMatchObject({ type: 'error' });
+  });
+});
+
+describe('Room emotes', () => {
+  it('passes emotes to the opponent, dropping ones sent too quickly', () => {
+    const { room, host, guest } = startedRoom();
+    room.emote(0, 'nice', 10_000);
+    expect(guest.messages.at(-1)).toEqual({ type: 'emote', emote: 'nice' });
+    room.emote(0, 'wow', 10_500);
+    expect(guest.messages.at(-1)).toEqual({ type: 'emote', emote: 'nice' });
+    room.emote(0, 'gg', 12_000);
+    expect(guest.messages.at(-1)).toEqual({ type: 'emote', emote: 'gg' });
+    expect(host.messages.some((message) => message.type === 'emote')).toBe(false);
+  });
+
+  it('ignores emotes before the battle starts', () => {
+    const host = fakePeer();
+    const guest = fakePeer();
+    const room = new Room('ABCD', host, () => 0, { makeToken });
+    room.join(guest);
+    room.emote(0, 'luck', 10_000);
+    expect(guest.messages.some((message) => message.type === 'emote')).toBe(false);
   });
 });
 
@@ -111,6 +263,16 @@ describe('protocol', () => {
     expect(parseClientMessage('{"type":"join"}')).toBeNull();
     expect(parseClientMessage('{"type":"ready","fleet":[{"type":"boat"}]}')).toBeNull();
     expect(parseClientMessage('not json')).toBeNull();
+    expect(parseClientMessage('{"type":"emote","emote":"gg"}')).toEqual({ type: 'emote', emote: 'gg' });
+    expect(parseClientMessage('{"type":"emote","emote":"anything I like"}')).toBeNull();
+    expect(parseClientMessage('{"type":"emote","emote":"toString"}')).toBeNull();
+    expect(parseClientMessage('{"type":"rejoin","code":"ABCD","token":"t"}')).toEqual({
+      type: 'rejoin',
+      code: 'ABCD',
+      token: 't',
+    });
+    expect(parseClientMessage('{"type":"rejoin","code":"ABCD"}')).toBeNull();
+    expect(parseClientMessage('{"type":"leave"}')).toEqual({ type: 'leave' });
   });
 
   it('builds a board only from a legal fleet', () => {

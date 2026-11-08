@@ -101,3 +101,20 @@ export function playShotSound(result: ShotResult): void {
     // Ignore: sound is optional.
   }
 }
+
+// Mechanical switch, like a heavy toggle on a ship's control panel: a sharp metal snap,
+// a low thunk from the switch body, then a faint click as it springs back. Never throws.
+export function playClickSound(): void {
+  try {
+    const ac = context();
+    if (!ac) return;
+    if (ac.state === 'suspended') void ac.resume();
+    const t = ac.currentTime + 0.005;
+    burst(ac, t, 0.012, 7000, 3000, 0.35, 'highpass');
+    tone(ac, t, 0.045, 190, 95, 0.3, 'triangle');
+    tone(ac, t + 0.002, 0.02, 1800, 1200, 0.06, 'square');
+    burst(ac, t + 0.045, 0.008, 4500, 2500, 0.14, 'bandpass');
+  } catch {
+    // Ignore: sound is optional.
+  }
+}
