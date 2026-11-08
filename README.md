@@ -60,15 +60,21 @@ Everyone works on their own branch, named after them, and merges into `main` thr
 - [x] Pixel-art assets, redrawn from `docs/asset-sheet-reference.webp`
 - [x] Effects: explosions, splashes, and sunk ships revealed
 - [x] Mouse and keyboard controls, and phone-width layout
-- [x] Settings screen: computer speed, animations, grid labels, sound
+- [x] Settings screen: computer speed, animations, grid labels, sound, music
 - [x] Sound effects for miss, hit and sunk, plus a click for buttons (all synthesized, no audio files), with a mute button on the battle screen
+- [x] Music: an original sea shanty on the menus and a march in battle, synthesized in `src/ui/music.ts`, with a music button beside the mute button. It starts after the first tap or key press, because browsers block sound before that
 - [x] Animated pixel radar on the online waiting screens (connecting, game code, fleet ready)
-- [x] Main menu artwork: an animated moonlit sea battle in pixel art behind a gold title. Click the sea to fire; three hits sink an enemy ship
+- [x] Main menu artwork: an animated sea battle in pixel art behind a gold title. Your ships fly blue flags (left), the enemy's red (right). Click the sea to fire: each hit leaves a burning scar, and the fifth blows the ship up and sinks it. Click the moon for a sunny day, and the sun for night again (remembered in the browser). Settings and How to Play open on the same scene
 - [x] End-of-game stats: shots, hits, accuracy, ships sunk, longest hit streak, time played, plus a win/loss record saved in the browser
 - [x] Online mode: two devices play over the internet through a WebSocket server (see Online play below)
 - [x] Online reconnecting: a dropped player has 60 seconds to come back, automatically or with Rejoin after a reload
 - [x] Online quick messages: a message button opens Good luck!, Nice shot!, Wow! and Good game! (no free-text chat, so nothing to moderate)
-- [x] Unit tests for the rules, computer player, stats, saved settings and record, and the online room
+- [x] Loading screen: a pixel radar and progress bar while the fonts and sprites load
+- [x] Link preview: title, description and `public/og-image.png` for chats and social sites. To redraw the image, run `npm run og-image` while `npm run dev` is running
+- [x] Installable app: add it to a home screen from the browser menu. After the first visit it opens and plays vs Computer and 2 Players offline (the build writes `dist/sw.js` listing every file to cache)
+- [x] Easter eggs: see Secrets below
+- [x] Unit tests for the rules, computer player, stats, saved settings and record, protocol parsing, and the online room
+- [x] Automated checks: GitHub runs the tests and the build on every pull request (`.github/workflows/test.yml`)
 - [x] Deployment: live on [Render](https://battleship-7pbl.onrender.com/)
 
 ### Left
@@ -81,8 +87,14 @@ Everyone works on their own branch, named after them, and merges into `main` thr
 
 - [ ] Review the code already merged (it was merged without a review)
 - [ ] Finish this README: what the game is, how to run it, how to test it
-- [ ] Add automated checks on GitHub to run the tests on pull requests
 - [ ] Add automated tests for the screens
+
+## Secrets
+
+Spoilers for players, notes for the team:
+
+- **The Kraken:** on the main menu, shoot your own (blue-flagged) ships. There is no warning: the third friendly hit wakes the kraken, which drags that ship under. Typing the Konami code (↑ ↑ ↓ ↓ ← → ← → B A) sends it after an enemy instead.
+- **Gold Anchor:** win a game without missing a single shot. It is saved in the browser and shown under the title. It is extremely rare: all 17 shots have to hit.
 
 ## Online play
 

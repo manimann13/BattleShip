@@ -486,25 +486,6 @@ ol {
   margin-top: 16px;
 }
 
-.howto {
-  max-width: 640px;
-  margin: 16px auto;
-  font-size: 19px;
-  line-height: 1.35;
-}
-
-.howto-steps,
-.howto-fleet {
-  display: grid;
-  gap: 6px;
-  margin-top: 12px;
-  padding-left: 24px;
-}
-
-.howto-fleet {
-  margin-top: 0;
-}
-
 .legend {
   display: flex;
   flex-wrap: wrap;
@@ -525,15 +506,13 @@ ol {
   height: 36px;
 }
 
-.settings {
-  max-width: 640px;
-  margin: 16px auto;
-}
-
 .settings-heading {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
+  margin: 0;
+  color: #ffe08a;
 }
 
 .settings-heading .icon {
@@ -541,41 +520,110 @@ ol {
   height: 32px;
 }
 
-.setting-group {
-  min-width: 0;
-  padding: 0;
-  margin: 12px 0 0;
-  border: 0;
+.setting-list {
+  width: 100%;
+  border-top: 2px solid rgba(201, 154, 60, 0.35);
 }
 
-.setting-group .subheading {
-  padding: 0;
-  margin: 8px 0 4px;
-}
-
-.setting-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 20px;
-  margin-top: 4px;
-}
-
-.setting-option {
+.setting-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  font-size: 18px;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  border-bottom: 2px solid rgba(201, 154, 60, 0.35);
   cursor: pointer;
 }
 
-.setting-option input {
-  width: 20px;
-  height: 20px;
-  margin: 0;
+.setting-label {
+  font-family: var(--font-pixel);
+  font-size: 18px;
+  color: #eef3f8;
+  text-align: left;
+}
+
+/* On/off switch: a brass-edged track with a square pixel knob. */
+.switch {
+  appearance: none;
+  position: relative;
   flex: none;
-  accent-color: var(--turn-blue-border);
+  width: 52px;
+  height: 26px;
+  margin: 0;
+  border: 2px solid #a87c2c;
+  background: #0b1220;
   cursor: pointer;
+  transition: background 0.15s steps(2);
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: #6b7a8c;
+  box-shadow: inset -2px -2px 0 rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s steps(3);
+}
+
+.switch:checked {
+  background: #1d6b3d;
+}
+
+.switch:checked::after {
+  background: #ffe08a;
+  transform: translateX(26px);
+}
+
+.switch:focus-visible,
+.segment input:focus-visible + span {
+  outline: 2px solid #ffe08a;
+  outline-offset: 2px;
+}
+
+/* Three-way switch: the chosen option lights up gold. */
+.segmented {
+  display: flex;
+  border: 2px solid #a87c2c;
+  background: #0b1220;
+}
+
+.segment {
+  position: relative;
+  cursor: pointer;
+}
+
+.segment input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.segment span {
+  display: block;
+  padding: 6px 10px;
+  font-family: var(--font-pixel);
+  font-size: 15px;
+  color: #b4c3d3;
+}
+
+.segment + .segment span {
+  border-left: 2px solid rgba(168, 124, 44, 0.5);
+}
+
+.segment input:checked + span {
+  background: #ffe08a;
+  color: #241a08;
+}
+
+@media (max-width: 380px) {
+  .segment span {
+    padding: 6px 7px;
+    font-size: 14px;
+  }
 }
 
 /* ---------- Layout ---------- */
@@ -983,3 +1031,229 @@ button.cell[aria-disabled='true'] {
     padding: 8px 14px;
   }
 }
+
+/* Music and sound buttons in the corner of the menu scene. */
+.menu-majestic > .corner-controls {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  z-index: 2;
+  display: flex;
+  gap: 6px;
+}
+
+/* Gold Anchor: a win without a single miss. */
+.title-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 0;
+  font-family: var(--font-pixel);
+  font-size: 15px;
+  color: #ffe08a;
+  text-shadow: 0 2px 0 #120c04;
+  filter: drop-shadow(0 0 8px rgba(255, 200, 90, 0.35));
+}
+
+.title-badge .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.gold-award {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 2px solid #c99a3c;
+  background: linear-gradient(#3a2a0c, #241a08);
+  color: #ffe9b0;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.gold-award .icon {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  animation: gold-shine 1.6s ease-in-out infinite alternate;
+}
+
+.gold-award strong {
+  color: #ffe08a;
+}
+
+.gold-count {
+  margin-left: auto;
+  font-family: var(--font-pixel);
+  color: #ffe08a;
+}
+
+@keyframes gold-shine {
+  from { filter: drop-shadow(0 0 2px rgba(255, 210, 110, 0.4)); }
+  to { filter: drop-shadow(0 0 10px rgba(255, 210, 110, 0.9)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gold-award .icon { animation: none; }
+}
+
+/* Scene plaques swing open when a menu, Settings or How to Play appears. */
+.menu-plaque {
+  transform-origin: top center;
+  animation: plaque-open 0.3s ease-out both;
+}
+
+@keyframes plaque-open {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scaleY(0.9);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Settings and How to Play on the scene: a wider plaque with left-aligned text. */
+.menu-majestic {
+  padding-bottom: 32px;
+}
+
+.menu-plaque.plaque-wide {
+  width: min(640px, 100%);
+  margin: 0;
+  align-items: stretch;
+  gap: 8px;
+  text-align: left;
+  cursor: default;
+}
+
+.plaque-wide .heading {
+  justify-content: center;
+  text-align: center;
+  color: #ffe08a;
+}
+
+.plaque-wide .subheading {
+  color: #e9c87a;
+}
+
+.plaque-wide .actions {
+  justify-content: center;
+}
+
+@media (max-width: 480px) {
+  .menu-plaque.plaque-wide {
+    padding: 18px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-plaque {
+    animation: none;
+  }
+}
+
+/* By day the sky is pale, so light text on it needs a darker outline. */
+.sky-day .menu-majestic .title-sub {
+  color: #fff1c4;
+  text-shadow: 0 2px 0 #3a2508, 1px 0 0 #3a2508, -1px 0 0 #3a2508, 0 0 8px rgba(20, 40, 80, 0.6);
+}
+
+.sky-day .menu-majestic .scene-tip,
+.sky-day .menu-majestic .title-badge {
+  color: #ffffff;
+  text-shadow: 0 2px 0 #0b2848, 1px 0 0 #0b2848, -1px 0 0 #0b2848, 0 0 8px rgba(10, 40, 80, 0.8);
+}
+
+.menu-plaque.settings {
+  width: min(440px, 100%);
+}
+
+.setting-label {
+  white-space: nowrap;
+}
+
+@media (max-width: 380px) {
+  .setting-label {
+    white-space: normal;
+  }
+}
+
+/* How to Play: one compact plaque. */
+.menu-plaque.howto {
+  width: min(460px, 100%);
+  align-items: stretch;
+  gap: 10px;
+  text-align: left;
+  font-size: 16px;
+  line-height: 1.35;
+  cursor: default;
+}
+
+.howto .heading {
+  margin: 0;
+  text-align: center;
+  color: #ffe08a;
+}
+
+.howto .subheading {
+  margin: 4px 0 0;
+  font-size: 17px;
+  color: #e9c87a;
+}
+
+.howto-steps {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.howto-keys {
+  margin: 0;
+  font-size: 14px;
+  color: #b4c3d3;
+}
+
+.howto-keys {
+  text-align: center;
+}
+
+.howto-fleet {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+}
+
+.howto-fleet li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.howto-ship {
+  height: 26px;
+  margin-left: auto;
+  image-rendering: pixelated;
+  flex: none;
+}
+
+.howto .legend {
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.howto .legend-tile {
+  width: 24px;
+  height: 24px;
+}
+

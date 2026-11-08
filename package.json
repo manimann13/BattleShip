@@ -10,7 +10,8 @@
     "server": "tsx server/index.ts",
     "start": "tsx server/index.ts",
     "test": "vitest run",
-    "assets": "node scripts/generate-assets.mjs"
+    "assets": "node scripts/generate-assets.mjs",
+    "og-image": "sh scripts/og-image.sh"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

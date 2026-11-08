@@ -8,6 +8,7 @@ export interface Settings {
   animations: boolean;
   gridLabels: boolean;
   sound: boolean;
+  music: boolean;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
@@ -16,6 +17,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   animations: true,
   gridLabels: true,
   sound: true,
+  music: true,
 };
 
 export const COMPUTER_DELAY_MS: Readonly<Record<ComputerSpeed, number>> = {
@@ -47,6 +49,7 @@ export function parseSettings(raw: string | null): Settings {
     animations: typeof saved.animations === 'boolean' ? saved.animations : DEFAULT_SETTINGS.animations,
     gridLabels: typeof saved.gridLabels === 'boolean' ? saved.gridLabels : DEFAULT_SETTINGS.gridLabels,
     sound: typeof saved.sound === 'boolean' ? saved.sound : DEFAULT_SETTINGS.sound,
+    music: typeof saved.music === 'boolean' ? saved.music : DEFAULT_SETTINGS.music,
   };
 }
 

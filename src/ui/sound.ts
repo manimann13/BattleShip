@@ -1,9 +1,10 @@
 import type { ShotResult } from '../game/types';
 
 // Sound effects are synthesized with the Web Audio API, so no audio files are needed.
+// The music in music.ts shares this audio context.
 let ctx: AudioContext | undefined;
 
-function context(): AudioContext | undefined {
+export function context(): AudioContext | undefined {
   if (ctx) return ctx;
   const Ctor =
     window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -114,6 +115,37 @@ export function playClickSound(): void {
     tone(ac, t, 0.045, 190, 95, 0.3, 'triangle');
     tone(ac, t + 0.002, 0.02, 1800, 1200, 0.06, 'square');
     burst(ac, t + 0.045, 0.008, 4500, 2500, 0.14, 'bandpass');
+  } catch {
+    // Ignore: sound is optional.
+  }
+}
+
+// A soft two-note bell when the sky changes: rising into day, falling into night.
+export function playSkyChime(day: boolean): void {
+  try {
+    const ac = context();
+    if (!ac) return;
+    if (ac.state === 'suspended') void ac.resume();
+    const t = ac.currentTime + 0.01;
+    const [first, second] = day ? [660, 990] : [880, 587];
+    tone(ac, t, 0.9, first, first * 0.998, 0.1, 'sine');
+    tone(ac, t + 0.14, 1.3, second, second * 0.998, 0.1, 'sine');
+    tone(ac, t + 0.14, 0.8, second * 2.76, second * 2.75, 0.02, 'sine');
+  } catch {
+    // Ignore: sound is optional.
+  }
+}
+
+// A deep, wet rumble as something huge rises from the sea.
+export function playKrakenSound(): void {
+  try {
+    const ac = context();
+    if (!ac) return;
+    if (ac.state === 'suspended') void ac.resume();
+    const t = ac.currentTime + 0.01;
+    tone(ac, t, 2.2, 70, 38, 0.5, 'sawtooth');
+    burst(ac, t, 2, 600, 80, 0.4, 'lowpass');
+    for (let i = 0; i < 8; i++) bubble(ac, t + 0.3 + Math.random() * 1.5, 150 + Math.random() * 250, 0.18);
   } catch {
     // Ignore: sound is optional.
   }
