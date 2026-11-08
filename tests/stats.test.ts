@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MatchStats, accuracy, formatDuration } from '../src/game/stats';
-import { parseRecord } from '../src/ui/record';
+import { MatchStats, accuracy, formatDuration, isFlawless } from '../src/game/stats';
+import { parseGoldAnchors, parseRecord } from '../src/ui/record';
 
 describe('MatchStats', () => {
   it('counts shots, hits, sinks and the longest run of hits for each side', () => {
@@ -46,5 +46,31 @@ describe('parseRecord', () => {
   it('survives corrupt data', () => {
     expect(parseRecord('not json').normal).toEqual(zero);
     expect(parseRecord('[1,2]').hard).toEqual(zero);
+  });
+});
+
+describe('Gold Anchor', () => {
+  it('is earned only when every shot hit', () => {
+    const perfect = new MatchStats(0);
+    for (let i = 0; i < 16; i++) perfect.record(0, 'hit');
+    perfect.record(0, 'sunk');
+    expect(isFlawless(perfect.sides[0])).toBe(true);
+
+    const oneMiss = new MatchStats(0);
+    oneMiss.record(0, 'miss');
+    for (let i = 0; i < 17; i++) oneMiss.record(0, 'hit');
+    expect(isFlawless(oneMiss.sides[0])).toBe(false);
+  });
+
+  it('is not earned without firing', () => {
+    expect(isFlawless(new MatchStats(0).sides[0])).toBe(false);
+  });
+
+  it('reads the saved count and ignores bad values', () => {
+    expect(parseGoldAnchors(null)).toBe(0);
+    expect(parseGoldAnchors('3')).toBe(3);
+    expect(parseGoldAnchors('-1')).toBe(0);
+    expect(parseGoldAnchors('1.5')).toBe(0);
+    expect(parseGoldAnchors('lots')).toBe(0);
   });
 });

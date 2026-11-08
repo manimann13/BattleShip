@@ -56,3 +56,30 @@ export function addResult(key: RecordKey, won: boolean): Tally {
   }
   return record[key];
 }
+
+// Gold Anchors: wins without a single miss. Just a count, kept in this browser.
+const GOLD_KEY = 'battleship-gold-anchors';
+
+export function parseGoldAnchors(raw: string | null): number {
+  const value = Number(raw ?? 0);
+  return isCount(value) ? value : 0;
+}
+
+export function loadGoldAnchors(): number {
+  try {
+    return parseGoldAnchors(window.localStorage.getItem(GOLD_KEY));
+  } catch {
+    return 0;
+  }
+}
+
+// Adds one Gold Anchor and returns the new total.
+export function addGoldAnchor(): number {
+  const total = loadGoldAnchors() + 1;
+  try {
+    window.localStorage.setItem(GOLD_KEY, String(total));
+  } catch {
+    // Storage blocked: the badge still shows for this game.
+  }
+  return total;
+}
