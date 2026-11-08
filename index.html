@@ -3,10 +3,84 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Battle Ship</title>
+    <title>Battle Ship: Command the Seas</title>
+    <meta name="description" content="A pixel-art naval battle game. Play free in your browser against the computer, with a friend on one device, or online." />
+    <meta name="theme-color" content="#141c2b" />
     <link rel="icon" type="image/png" href="assets/icon-anchor.png" />
+    <link rel="apple-touch-icon" href="assets/app-icon-192.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Battle Ship" />
+
+    <!-- Link preview for chats and social sites. Previews need absolute URLs. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Battle Ship" />
+    <meta property="og:title" content="Battle Ship: Command the Seas" />
+    <meta property="og:description" content="Pixel-art naval battles in your browser. Play the computer, a friend, or anyone online. Free, no sign-up." />
+    <meta property="og:url" content="https://battleship-7pbl.onrender.com/" />
+    <meta property="og:image" content="https://battleship-7pbl.onrender.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Battle Ship title over a moonlit sea with pixel-art warships" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Battle Ship: Command the Seas" />
+    <meta name="twitter:description" content="Pixel-art naval battles in your browser. Play the computer, a friend, or anyone online." />
+    <meta name="twitter:image" content="https://battleship-7pbl.onrender.com/og-image.png" />
+
+    <!-- Loading screen styles live here so they show before the game's CSS and fonts arrive. -->
+    <style>
+      html { background: #141c2b; }
+      #loader {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: radial-gradient(ellipse at 50% 40%, #1f2d4d 0%, #141c2b 70%);
+        color: #eef3f8;
+        font-family: 'Pixelify Sans', ui-monospace, Menlo, monospace;
+        transition: opacity 0.45s ease;
+      }
+      #loader.done { opacity: 0; pointer-events: none; }
+      .loader-radar {
+        width: 96px;
+        height: 96px;
+        image-rendering: pixelated;
+        background: url('assets/radar-strip.png') 0 0 / 1600% 100%;
+        animation: loader-sweep 2.4s steps(16) infinite;
+        filter: drop-shadow(0 0 12px rgba(95, 207, 138, 0.35));
+      }
+      @keyframes loader-sweep { to { background-position-x: -1536px; } }
+      .loader-text { margin: 0; font-size: 20px; letter-spacing: 0.08em; text-shadow: 0 2px 0 #000; }
+      .loader-bar {
+        width: 180px;
+        height: 12px;
+        padding: 2px;
+        border: 2px solid #8fb7d9;
+        background: #0b1220;
+        box-shadow: 0 0 0 2px #0b1220;
+      }
+      .loader-fill {
+        width: 4%;
+        height: 100%;
+        background: repeating-linear-gradient(90deg, #5fcf8a 0 8px, #3fa868 8px 10px);
+        transition: width 0.2s steps(6);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .loader-radar { animation: none; }
+        #loader, .loader-fill { transition: none; }
+      }
+    </style>
   </head>
   <body>
+    <div id="loader" role="status" aria-label="Loading">
+      <div class="loader-radar"></div>
+      <p class="loader-text">Readying the fleet…</p>
+      <div class="loader-bar"><div class="loader-fill"></div></div>
+    </div>
     <main id="app"></main>
     <script type="module" src="/src/main.ts"></script>
   </body>

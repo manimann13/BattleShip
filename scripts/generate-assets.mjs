@@ -464,9 +464,8 @@ function crosshair() {
   return s;
 }
 
-function anchor() {
+function anchor(color = '#9aa8b8', shine = '#d0d7df') {
   const s = new Sprite(TILE, TILE);
-  const color = '#9aa8b8';
   s.ring(15.5, 6, 4, 2, color);
   s.rect(14, 9, 4, 18, color);
   s.rect(9, 11, 14, 3, color);
@@ -474,7 +473,7 @@ function anchor() {
   s.line(17, 27, 25, 21, color, 3);
   s.polygon([[3, 17], [10, 20], [5, 24]], color);
   s.polygon([[28, 17], [21, 20], [26, 24]], color);
-  s.rect(14, 10, 1, 16, '#d0d7df');
+  s.rect(14, 10, 1, 16, shine);
   return s;
 }
 
@@ -509,6 +508,20 @@ function speaker(muted) {
 }
 
 // Speech bubble with three dots, for the quick-message button.
+// Two beamed eighth notes; crossed out when the music is off.
+function musicNote(muted) {
+  const s = new Sprite(TILE, TILE);
+  const color = '#8a97a7';
+  s.rect(11, 6, 15, 4, color);
+  s.rect(11, 6, 3, 17, color);
+  s.rect(23, 6, 3, 14, color);
+  s.circle(9.5, 23.5, 4, color);
+  s.circle(21.5, 20.5, 4, color);
+  s.rect(12, 7, 13, 1, '#b9c2cd');
+  if (muted) s.line(3, 27, 28, 5, '#ee4a3c', 3);
+  return s;
+}
+
 function message() {
   const s = new Sprite(TILE, TILE);
   const edge = '#8a97a7';
@@ -583,11 +596,27 @@ for (let i = 0; i < RADAR_FRAMES; i++) {
 save('radar-strip', radarStrip);
 save('icon-crosshair', crosshair());
 save('icon-anchor', anchor());
+save('icon-anchor-gold', anchor('#e9b949', '#fff0b8'));
 save('icon-gear', gear());
 save('icon-sound-on', speaker(false));
 save('icon-sound-off', speaker(true));
 save('icon-message', message());
+save('icon-music-on', musicNote(false));
+save('icon-music-off', musicNote(true));
 save('icon-flag-blue', flag('#3f7fe0', '#2c5fb5'));
 save('icon-flag-red', flag('#e8473c', '#b5302a'));
+
+// Home-screen icon for the installable app: a gold anchor on the night sea, with room around it for round masks.
+function appIcon() {
+  const s = new Sprite(64, 64);
+  for (let y = 0; y < 64; y++) s.rect(0, y, 64, 1, y < 40 ? '#1a2440' : y < 52 ? '#1b3558' : '#1d4370');
+  const random = seededRandom(7);
+  for (let i = 0; i < 14; i++) s.set(Math.floor(random() * 64), Math.floor(random() * 34), '#c9d6ff');
+  s.blit(anchor('#e9b949', '#fff0b8').scaled(1), 16, 14);
+  return s;
+}
+for (const size of [192, 512]) {
+  writeFileSync(join(OUT_DIR, `app-icon-${size}.png`), encodePng(appIcon().scaled(size / 64)));
+}
 
 console.log(`Assets written to ${OUT_DIR}`);

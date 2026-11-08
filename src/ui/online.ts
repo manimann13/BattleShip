@@ -1,5 +1,5 @@
 import { Board } from '../game/board';
-import { MatchStats } from '../game/stats';
+import { MatchStats, isFlawless } from '../game/stats';
 import { FLEET, type Coord, coordLabel } from '../game/types';
 import { Connection } from '../net/connection';
 import {
@@ -13,12 +13,14 @@ import {
   boardFromFleet,
   toPlacement,
 } from '../net/protocol';
-import { type BoardView, createBoardView } from './boardView';
+import type { BoardView } from './boardView';
 import { button, h, icon } from './dom';
-import { type Tally, addResult } from './record';
+import { type Tally, addGoldAnchor, addResult } from './record';
 import type { Settings } from './settings';
 import { playShotSound } from './sound';
-import { muteButton, statsPanel } from './statsView';
+import { banner, battleScreen } from './battleView';
+import { statsPanel } from './statsView';
+import { setMusicTrack } from './music';
 
 // What the online game needs from the App that owns the screen.
 export interface OnlineHost {
@@ -80,6 +82,7 @@ export class OnlineGame {
   private own = new Board();
   private enemy = new Board();
   private stats = new MatchStats();
+  private goldAnchors: number | undefined;
   private tally: Tally | null = null;
   private myTurn = false;
   private won = false;
@@ -499,6 +502,7 @@ export class OnlineGame {
     this.enemy = new Board();
     this.stats = new MatchStats();
     this.tally = null;
+    this.goldAnchors = undefined;
     this.awaitingShot = false;
     this.fleetSent = true;
     for (const shot of state.shots) this.recordShot(shot);
@@ -527,6 +531,7 @@ export class OnlineGame {
     this.enemy = new Board();
     this.stats = new MatchStats();
     this.tally = null;
+    this.goldAnchors = undefined;
     this.myTurn = false;
     this.won = false;
     this.message = '';
@@ -558,6 +563,7 @@ export class OnlineGame {
     this.phase = 'battle';
     this.myTurn = yourTurn;
     this.stats = new MatchStats();
+    this.goldAnchors = undefined;
     this.message = yourTurn ? 'You fire first. Choose a square on the enemy grid.' : 'Your opponent fires first.';
     this.host.announce(this.message);
     this.renderBattle(true);
@@ -604,6 +610,7 @@ export class OnlineGame {
       this.myTurn = false;
       this.stats.finish();
       this.tally = addResult('online', shot.byYou);
+      if (shot.byYou && isFlawless(this.stats.sides[0])) this.goldAnchors = addGoldAnchor();
     } else {
       this.myTurn = !shot.byYou;
     }
@@ -650,22 +657,8 @@ export class OnlineGame {
   // ---------- Screen ----------
 
   private banner(): HTMLElement {
-    if (this.phase === 'over') {
-      return h('div', `banner ${this.won ? 'banner-victory' : 'banner-defeat'}`, this.won ? 'Victory!' : 'Defeat!');
-    }
-    return this.myTurn
-      ? h('div', 'banner banner-blue', 'Your Turn')
-      : h('div', 'banner banner-red', 'Opponent’s Turn');
-  }
-
-  private fleetStatus(board: Board): HTMLElement {
-    const items = FLEET.map((spec) => {
-      // Enemy ships only appear on our copy of their board once they have sunk (or the game ended).
-      const ship = board.ships.find((placed) => placed.spec.type === spec.type);
-      const sunk = ship !== undefined && board.isSunk(ship);
-      return h('li', sunk ? 'status-item is-sunk' : 'status-item', sunk ? `${spec.name} (sunk)` : spec.name);
-    });
-    return h('ul', 'status-list', ...items);
+    if (this.phase === 'over') return this.won ? banner('victory', 'Victory!') : banner('defeat', 'Defeat!');
+    return this.myTurn ? banner('blue', 'Your Turn') : banner('red', 'Opponent’s Turn');
   }
 
   // The status line. While waiting on a connection, its trailing "…" becomes animated dots.
@@ -688,18 +681,7 @@ export class OnlineGame {
     const canMessage = this.connected && !this.opponentLeft;
     if (!canMessage) this.setMessageMenu(false);
 
-    const own = createBoardView({ board: this.own, mode: 'static', label: 'Your fleet', showShip: () => true });
-    const enemy = createBoardView({
-      board: this.enemy,
-      mode: 'fire',
-      label: 'Enemy waters',
-      locked: !canFire,
-      initialFocus: this.lastTarget,
-      showShip: () => true,
-      onActivate: (cell) => this.fireAt(cell),
-    });
-
-    const controls = h('div', 'battle-controls');
+    const controls: HTMLElement[] = [];
     if (over) {
       const rematch = button(this.rematchSent ? 'Waiting for opponent…' : 'Rematch', () => {
         this.rematchSent = true;
@@ -707,63 +689,39 @@ export class OnlineGame {
         this.renderBattle();
       }, 'btn-green');
       rematch.disabled = this.rematchSent || this.opponentLeft || !this.connected;
-      controls.append(rematch, button('Main Menu', () => this.host.quit()));
+      controls.push(rematch, button('Main Menu', () => this.host.quit()));
     }
 
-    const content: Node[] = [
-      h(
-        'header',
-        'topbar',
-        h('p', 'brand', icon('icon-anchor', 'icon'), 'Battle Ship'),
-        this.banner(),
-        h(
-          'div',
-          'topbar-actions',
-          ...(canMessage ? [this.messageControl] : []),
-          muteButton(this.host.settings),
-          button('Quit', () => this.host.quit(), 'btn-small btn-quiet'),
-        ),
-      ),
-      this.messageLine(),
+    const { content, own, enemy } = battleScreen({
+      settings: this.host.settings,
+      banner: this.banner(),
+      message: this.messageLine(),
+      onQuit: () => this.host.quit(),
       controls,
-    ];
-    if (over) {
-      content.push(
-        statsPanel(
-          this.stats,
-          ['You', 'Opponent'],
-          this.tally ? { label: 'Your online record', tally: this.tally } : undefined,
-        ),
-      );
-    }
-    content.push(
-      h(
-        'div',
-        'battlefield',
-        h(
-          'section',
-          'board-panel',
-          h('h2', 'board-title', icon('icon-flag-blue', 'icon'), 'Your Fleet', this.bubbles.mine),
-          own.element,
-          this.fleetStatus(this.own),
-        ),
-        h(
-          'section',
-          'board-panel',
-          h(
-            'h2',
-            'board-title',
-            icon('icon-flag-red', 'icon'),
-            over ? 'Enemy Fleet' : 'Enemy Waters',
-            this.bubbles.theirs,
-          ),
-          enemy.element,
-          this.fleetStatus(this.enemy),
-        ),
-      ),
-    );
+      topbarExtras: canMessage ? [this.messageControl] : [],
+      summary: over
+        ? statsPanel(
+            this.stats,
+            ['You', 'Opponent'],
+            this.tally ? { label: 'Your online record', tally: this.tally } : undefined,
+            this.goldAnchors,
+          )
+        : undefined,
+      own: { board: this.own, title: 'Your Fleet', badge: this.bubbles.mine },
+      enemy: {
+        board: this.enemy,
+        title: over ? 'Enemy Fleet' : 'Enemy Waters',
+        badge: this.bubbles.theirs,
+        locked: !canFire,
+        initialFocus: this.lastTarget,
+        // Our copy of the enemy board only holds ships we have sunk, or all of them once the game ends.
+        showShip: () => true,
+        onActivate: (cell) => this.fireAt(cell),
+      },
+    });
     if (fresh) this.host.showFresh(...content);
     else this.host.show(...content);
+    if (!over) setMusicTrack('battle');
     if (canFire && !fresh && this.lastTarget) enemy.focusCell(this.lastTarget);
     return { own, enemy };
   }

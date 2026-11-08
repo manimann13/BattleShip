@@ -31,6 +31,7 @@ const MIME: Record<string, string> = {
   '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
   '.json': 'application/json',
+  '.webmanifest': 'application/manifest+json',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
 };
@@ -127,6 +128,9 @@ wss.on('connection', (socket, request) => {
       peer.send({ type: 'error', message: 'Unrecognised message' });
       return;
     }
+
+    // A room that ended (opponent left, expired) no longer holds this player, so they can start or join another.
+    if (membership?.room.closed) membership = null;
 
     if (message.type === 'create' || message.type === 'join' || message.type === 'rejoin') {
       if (membership) {

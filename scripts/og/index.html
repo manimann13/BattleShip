@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <!-- Dev-only page used to capture the link preview image (npm run og-image, with npm run dev running). Not part of the build. -->
+  <head>
+    <meta charset="UTF-8" />
+    <title>Link preview</title>
+    <!-- Sprites use paths relative to the site root. -->
+    <base href="/" />
+    <style>
+      body { margin: 0; overflow: hidden; }
+      #app { padding: 0; }
+      .menu-majestic { min-height: 100vh; justify-content: center; padding-top: 0; gap: 14px; }
+      .menu-majestic .title { font-size: 112px; }
+      .title-sub { font-size: 28px; }
+      .title-text { animation: none; }
+      .og-tag { font-family: var(--font-pixel); font-size: 26px; color: #e9eef8; text-shadow: 0 3px 0 #000; }
+    </style>
+  </head>
+  <body>
+    <main id="app"></main>
+    <script type="module" src="/scripts/og/og.ts"></script>
+  </body>
+</html>

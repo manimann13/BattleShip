@@ -1,5 +1,8 @@
 import { type ChildProcess, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { connect } from 'node:net';
 import { type Plugin, defineConfig } from 'vite';
 
@@ -53,9 +56,44 @@ function gameServer(): Plugin {
   };
 }
 
+// Files the offline app does not need.
+const NOT_PRECACHED = new Set(['sw.js', 'og-image.png']);
+
+function listFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory() ? listFiles(join(dir, entry.name)) : [join(dir, entry.name)],
+  );
+}
+
+// Writes dist/sw.js after a build, listing every built file so the first visit caches all of them.
+// The version is a hash of those files, so each deploy replaces the old cache.
+function serviceWorker(): Plugin {
+  let outDir = 'dist';
+  return {
+    name: 'battleship-service-worker',
+    apply: 'build',
+    configResolved(config) {
+      outDir = config.build.outDir;
+    },
+    closeBundle() {
+      const hash = createHash('sha256');
+      const files: string[] = [];
+      for (const path of listFiles(outDir).sort()) {
+        const name = relative(outDir, path).split('\\').join('/');
+        if (NOT_PRECACHED.has(name)) continue;
+        files.push(name);
+        hash.update(name).update(readFileSync(path));
+      }
+      const template = readFileSync('scripts/sw-template.js', 'utf8');
+      const header = `const VERSION = '${hash.digest('hex').slice(0, 12)}';\nconst FILES = ${JSON.stringify(files)};\n`;
+      writeFileSync(join(outDir, 'sw.js'), header + template);
+    },
+  };
+}
+
 export default defineConfig({
   base: './',
-  plugins: [gameServer()],
+  plugins: [gameServer(), serviceWorker()],
   // The game server runs on its own port; forward the page's WebSocket to it.
   server: { port: 5173, proxy: { '/ws': { target: `ws://localhost:${GAME_PORT}`, ws: true } } },
 });

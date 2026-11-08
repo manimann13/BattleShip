@@ -173,7 +173,7 @@ export class Room {
   fire(player: PlayerId, x: number, y: number): void {
     const game = this.game;
     if (this.phase !== 'battle' || !game) {
-      this.fail(player, 'The battle has not started');
+      this.fail(player, this.phase === 'over' ? 'The game is over' : 'The battle has not started');
       return;
     }
     if (game.current !== player) {
