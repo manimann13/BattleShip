@@ -1,14 +1,14 @@
 import { ComputerPlayer, type Difficulty } from '../ai/computer';
 import { Board, shipCells } from '../game/board';
 import { Game, type PlayerId, type ShotOutcome } from '../game/game';
-import { MatchStats, isFlawless } from '../game/stats';
-import { FLEET, type Coord, type Orientation, coordLabel, isOnBoard } from '../game/types';
+import { MatchStats, earnsGoldAnchor } from '../game/stats';
+import { FLEET, type Coord, type Orientation, type ShotResult, coordLabel, isOnBoard } from '../game/types';
 import { type BoardView, createBoardView } from './boardView';
 import { button, h, icon } from './dom';
 import { type MenuScene, createMenuScene } from './menuScene';
 import { OnlineGame } from './online';
 import { type Tally, addGoldAnchor, addResult, loadGoldAnchors } from './record';
-import { banner, battleScreen } from './battleView';
+import { banner, battleScreen, seaChart, topStrip } from './battleView';
 import { audioButtons, statsPanel } from './statsView';
 import { setMusicEnabled, setMusicTrack, unlockMusic } from './music';
 import { playClickSound, playKrakenSound, playShotSound, playSkyChime } from './sound';
@@ -44,6 +44,8 @@ export class App {
   private onlineReady: (() => void) | null = null;
   private readonly online: OnlineGame;
   private readonly scene: MenuScene;
+  // Holds the scene behind the play screens. Kept between renders so the sea never restarts.
+  private readonly backdrop = h('div', 'play-backdrop');
 
   constructor(private readonly root: HTMLElement) {
     this.scene = createMenuScene({
@@ -59,8 +61,9 @@ export class App {
       },
     });
     this.online = new OnlineGame({
-      show: (...content) => this.show(...content),
-      showFresh: (...content) => this.showFresh(...content),
+      show: (...content) => this.showPlay(false, ...content),
+      showFresh: (...content) => this.showPlay(true, ...content),
+      plaque: (...children) => this.playPlaque(...children),
       announce: (message) => {
         this.live.textContent = message;
       },
@@ -133,6 +136,7 @@ export class App {
   // The corner sound buttons are left off Settings, which has its own switches for them.
   private showScene(plaque: HTMLElement, cornerButtons = true): void {
     this.root.classList.toggle('sky-day', this.scene.isDay());
+    this.scene.setMode('menu');
     this.showFresh(
       h(
         'div',
@@ -147,6 +151,21 @@ export class App {
     this.scene.start();
   }
 
+  // The play screens (placement, pass, battle and every online screen) over the same sea, slowed and dimmed.
+  private showPlay(fresh: boolean, ...content: Node[]): void {
+    this.root.classList.toggle('sky-day', this.scene.isDay());
+    this.backdrop.replaceChildren(this.scene.element);
+    const view = h('div', 'play', this.backdrop, h('div', 'play-content', ...content));
+    if (fresh) this.showFresh(view);
+    else this.show(view);
+    this.scene.setMode('backdrop', this.settings.animations);
+    this.scene.start();
+  }
+
+  // A brass plaque centred over the backdrop, for the pass screen and online lobby and notices.
+  private playPlaque(...children: Node[]): HTMLElement {
+    return h('div', 'menu play-menu', h('div', 'menu-plaque', ...children));
+  }
 
   private showMenu(): void {
     this.stopGame();
@@ -171,12 +190,12 @@ export class App {
     );
   }
 
-  // Under the title, once the player has won a game without missing.
+  // Under the title, once the player has won a game with 85% accuracy or better.
   private goldBadge(): HTMLElement[] {
     const count = loadGoldAnchors();
     if (count === 0) return [];
     const badge = h('p', 'title-badge', icon('icon-anchor-gold', 'icon'), count > 1 ? `Gold Anchor ×${count}` : 'Gold Anchor');
-    badge.title = 'Won a game without a single miss';
+    badge.title = 'Won a game with 85% accuracy or better';
     return [badge];
   }
 
@@ -379,19 +398,19 @@ export class App {
       : 'Fleet ready. Press Ready to continue.';
 
     const content = [
-      h(
-        'header',
-        'topbar',
-        h('h1', 'heading', heading),
-        h('div', 'topbar-actions', ...audioButtons(this.settings), button('Quit', () => this.showMenu(), 'btn-small btn-quiet')),
+      topStrip(
+        h('h1', 'heading topbar-heading', heading),
+        ...audioButtons(this.settings),
+        button('Quit', () => this.showMenu(), 'btn-small btn-quiet'),
       ),
       h(
         'div',
         'placement',
-        view.element,
+        seaChart(view.element),
         h(
           'div',
-          'panel placement-side',
+          // Only swings open when the screen first appears, not on every ship placed.
+          fresh ? 'menu-plaque placement-side' : 'menu-plaque placement-side no-swing',
           h('p', 'hint', hint),
           h('ul', 'fleet-list', ...shipList),
           h(
@@ -409,8 +428,7 @@ export class App {
       ),
     ];
 
-    if (fresh) this.showFresh(...content);
-    else this.show(...content);
+    this.showPlay(fresh, ...content);
     this.placementView = view;
     if (focus && !fresh) view.focusCell(focus);
     this.updatePreview();
@@ -466,10 +484,9 @@ export class App {
 
   private showPass(to: PlayerId, note: string, onReady: () => void): void {
     const from = opponentOf(to);
-    this.showFresh(
-      h(
-        'div',
-        'menu',
+    this.showPlay(
+      true,
+      this.playPlaque(
         icon('icon-radar', 'pass-icon'),
         h('h1', 'heading', `Pass to Player ${to + 1}`),
         h('p', 'menu-prompt', `${note} Player ${from + 1}, look away.`),
@@ -480,7 +497,8 @@ export class App {
           button('Quit', () => this.showMenu(), 'btn-quiet'),
         ),
       ),
-    );    // Between turns the battle music keeps going.
+    );
+    // Between turns the battle music keeps going.
     if (this.game) setMusicTrack('battle');
   }
 
@@ -529,7 +547,7 @@ export class App {
     return banner(this.viewer === 0 ? 'blue' : 'red', `Player ${this.viewer + 1} Turn`);
   }
 
-  private renderBattle(fresh = false): { own: BoardView; enemy: BoardView } | null {
+  private renderBattle(fresh = false, flash?: ShotResult): { own: BoardView; enemy: BoardView } | null {
     const game = this.game;
     if (!game) return null;
     const over = game.winner !== null;
@@ -557,9 +575,10 @@ export class App {
       settings: this.settings,
       banner: this.banner(game),
       message: h('p', 'message', this.message),
+      flash,
       onQuit: () => this.showMenu(),
       controls,
-      summary: over ? this.endStats() : undefined,
+      result: over ? this.result(game) : undefined,
       own: {
         board: game.boardOf(viewer),
         title: this.mode === 'computer' ? 'Your Fleet' : `Player ${viewer + 1} Fleet`,
@@ -573,11 +592,17 @@ export class App {
         onActivate: (cell) => this.fireAt(cell),
       },
     });
-    if (fresh) this.showFresh(...content);
-    else this.show(...content);
+    this.showPlay(fresh, ...content);
     if (!over) setMusicTrack('battle');
     if (canFire && !fresh && this.lastTarget) enemy.focusCell(this.lastTarget);
     return { own, enemy };
+  }
+
+  // The results plaque: who won, and the end-of-game stats.
+  private result(game: Game): { won: boolean; title: string; summary: HTMLElement } {
+    const winner = game.winner ?? 0;
+    if (this.mode === 'two-player') return { won: true, title: `Player ${winner + 1} Wins!`, summary: this.endStats() };
+    return { won: winner === 0, title: winner === 0 ? 'Victory!' : 'Defeat!', summary: this.endStats() };
   }
 
   private endStats(): HTMLElement {
@@ -597,7 +622,7 @@ export class App {
     this.recordShot(outcome);
     this.setMessage(this.gameMessage(outcome));
     if (this.mode === 'two-player' && !outcome.gameOver) this.awaitingPass = true;
-    const views = this.renderBattle();
+    const views = this.renderBattle(false, outcome.result);
     if (this.settings.sound) playShotSound(outcome.result);
     if (this.settings.animations) {
       views?.enemy.playEffect(cell, outcome.result === 'miss' ? 'splash' : 'explosion');
@@ -618,7 +643,7 @@ export class App {
     computer.report(target, outcome.result, outcome.ship);
     this.recordShot(outcome);
     this.setMessage(this.gameMessage(outcome));
-    const views = this.renderBattle();
+    const views = this.renderBattle(false, outcome.result);
     if (this.settings.sound) playShotSound(outcome.result);
     if (this.settings.animations) {
       views?.own.playEffect(target, outcome.result === 'miss' ? 'splash' : 'explosion');
@@ -631,9 +656,9 @@ export class App {
     if (!outcome.gameOver) return;
     this.stats.finish();
     if (this.mode === 'computer') this.tally = addResult(this.settings.difficulty, outcome.shooter === 0);
-    // A human winner who never missed earns a Gold Anchor (the computer cannot).
+    // A human winner with 85% accuracy or better earns a Gold Anchor (the computer cannot).
     const humanWon = this.mode === 'two-player' || outcome.shooter === 0;
-    if (humanWon && isFlawless(this.stats.sides[outcome.shooter])) this.goldAnchors = addGoldAnchor();
+    if (humanWon && earnsGoldAnchor(this.stats.sides[outcome.shooter])) this.goldAnchors = addGoldAnchor();
   }
 
   private gameMessage(outcome: ShotOutcome): string {

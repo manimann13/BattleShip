@@ -1044,7 +1044,7 @@ button.cell[aria-disabled='true'] {
   gap: 6px;
 }
 
-/* Gold Anchor: a win without a single miss. */
+/* Gold Anchor: a win with 85% accuracy or better. */
 .title-badge {
   display: flex;
   align-items: center;
@@ -1259,3 +1259,434 @@ button.cell[aria-disabled='true'] {
   height: 24px;
 }
 
+
+/* ---------- Play screens: the same sea, slowed and dimmed, behind placement, pass and battle ---------- */
+
+.play-backdrop::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(rgba(6, 12, 28, 0.5), rgba(6, 12, 28, 0.74));
+}
+
+.sky-day .play-backdrop::after {
+  background: linear-gradient(rgba(8, 26, 54, 0.4), rgba(8, 26, 54, 0.62));
+}
+
+.play-content {
+  position: relative;
+  z-index: 1;
+}
+
+.menu.play-menu {
+  justify-content: center;
+}
+
+.play-menu .menu-plaque {
+  gap: 16px;
+}
+
+.play-menu .heading {
+  color: #ffe08a;
+  text-shadow: 0 2px 0 #120c04;
+}
+
+.play-menu .menu-buttons {
+  align-items: stretch;
+}
+
+.no-swing {
+  animation: none;
+}
+
+/* Brass strip along the top, framed like the menu plaques. */
+.play .topbar {
+  padding: 8px 14px;
+  margin-bottom: 0;
+  background:
+    radial-gradient(circle at 8px 8px, #e9c87a 0 2px, transparent 3px),
+    radial-gradient(circle at calc(100% - 8px) 8px, #e9c87a 0 2px, transparent 3px),
+    radial-gradient(circle at 8px calc(100% - 8px), #e9c87a 0 2px, transparent 3px),
+    radial-gradient(circle at calc(100% - 8px) calc(100% - 8px), #e9c87a 0 2px, transparent 3px),
+    rgba(7, 12, 28, 0.84);
+  border: 3px solid #a87c2c;
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 0 2px #2a1d08,
+    inset 0 0 0 4px rgba(233, 200, 122, 0.25),
+    0 5px 0 rgba(0, 0, 0, 0.45),
+    0 0 30px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.play .brand {
+  gap: 6px;
+  padding-left: 6px;
+  font-size: 24px;
+  letter-spacing: 0.03em;
+}
+
+.brand-text {
+  color: transparent;
+  background-image: linear-gradient(#fff7cf 0%, #ffe08a 38%, #e3a733 55%, #b8741c 75%, #f2c255 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  filter:
+    drop-shadow(2px 0 0 #1a0f04)
+    drop-shadow(-2px 0 0 #1a0f04)
+    drop-shadow(0 2px 0 #1a0f04)
+    drop-shadow(0 -2px 0 #1a0f04);
+}
+
+/* The turn banner and placement heading sit in the middle like enamel badges. */
+.play .topbar .banner,
+.topbar-heading {
+  padding: 4px 22px;
+  font-size: 22px;
+  border-width: 2px;
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 2px #a87c2c,
+    0 0 0 4px #2a1d08,
+    inset 0 2px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.25);
+}
+
+.topbar-heading {
+  text-align: center;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+  background: var(--turn-blue);
+  border: 2px solid var(--turn-blue-border);
+}
+
+/* The turn message on a small framed plate under the strip. */
+.message-plate {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0 0;
+}
+
+.message-plate .message {
+  min-width: min(520px, 100%);
+  max-width: 100%;
+  min-height: 0;
+  padding: 6px 18px;
+  font-family: var(--font-pixel);
+  font-size: 20px;
+  background: rgba(7, 12, 28, 0.8);
+  border: 2px solid #a87c2c;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 2px #2a1d08, 0 4px 0 rgba(0, 0, 0, 0.4);
+}
+
+.message-plate .message:empty {
+  display: none;
+}
+
+.message.flash-miss {
+  animation: flash-miss 0.9s ease-out;
+}
+
+.message.flash-hit {
+  animation: flash-hit 0.9s ease-out;
+}
+
+.message.flash-sunk {
+  animation: flash-sunk 1.2s ease-out;
+}
+
+@keyframes flash-miss {
+  from {
+    background: rgba(70, 120, 190, 0.85);
+    border-color: #cfe3ff;
+  }
+}
+
+@keyframes flash-hit {
+  from {
+    background: rgba(190, 90, 30, 0.9);
+    border-color: #ffd23c;
+  }
+}
+
+@keyframes flash-sunk {
+  0%,
+  30% {
+    background: rgba(150, 30, 30, 0.92);
+    border-color: #ffe08a;
+  }
+}
+
+/* ---------- Sea charts: each board on faint, slightly worn parchment ---------- */
+
+.sea-chart {
+  --ink-chart: #5c4426;
+  position: relative;
+  padding: 28px 14px 10px 8px;
+  color: var(--ink-chart);
+  background:
+    radial-gradient(ellipse 30% 22% at 82% 18%, rgba(140, 100, 50, 0.12), transparent 70%),
+    radial-gradient(ellipse 22% 16% at 14% 78%, rgba(140, 100, 50, 0.1), transparent 70%),
+    radial-gradient(ellipse 75% 70% at 50% 50%, transparent 55%, rgba(120, 82, 36, 0.32) 100%),
+    linear-gradient(170deg, #e8dab8, #dccaa0 60%, #d6c194);
+  border-radius: 3px;
+  /* Slightly uneven edges, as if the chart has been handled a lot. */
+  clip-path: polygon(
+    0 1%, 6% 0, 31% 0.6%, 52% 0, 77% 0.5%, 100% 0, 99.6% 22%, 100% 47%, 99.5% 73%, 100% 99%,
+    71% 100%, 48% 99.4%, 23% 100%, 0.5% 99.5%, 0 76%, 0.6% 51%, 0 27%
+  );
+  filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.35));
+}
+
+.sea-chart::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 1px solid rgba(92, 68, 38, 0.35);
+  pointer-events: none;
+}
+
+.sea-chart .axis {
+  font-family: var(--font-pixel);
+  color: var(--ink-chart);
+  opacity: 0.85;
+}
+
+/* A faint compass rose printed in the chart's top-left corner. */
+.chart-compass {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 26px;
+  height: 26px;
+  opacity: 0.6;
+  image-rendering: pixelated;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 13' shape-rendering='crispEdges'%3E%3Cg fill='%235c4426'%3E%3Crect x='0' y='6' width='13' height='1'/%3E%3Crect x='3' y='5' width='7' height='3'/%3E%3Crect x='6' y='6' width='1' height='7'/%3E%3Crect x='5' y='7' width='3' height='3'/%3E%3C/g%3E%3Cg fill='%239c2b22'%3E%3Crect x='6' y='0' width='1' height='6'/%3E%3Crect x='5' y='3' width='3' height='3'/%3E%3C/g%3E%3Crect x='6' y='6' width='1' height='1' fill='%23e8dab8'/%3E%3C/svg%3E") center / contain no-repeat;
+  pointer-events: none;
+}
+
+/* The board title as a small brass cartouche on the chart's top edge. */
+.sea-chart .board-title {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  z-index: 2;
+  margin: 0;
+  padding: 1px 12px 2px;
+  font-size: 18px;
+  white-space: nowrap;
+  color: #ffe9b0;
+  text-shadow: 0 2px 0 #120c04;
+  background: rgba(7, 12, 28, 0.88);
+  border: 2px solid #a87c2c;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px #2a1d08;
+  transform: translateX(-50%);
+}
+
+.sea-chart .board-title .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* The fleet under each chart: small sprites to scale, sunk ships faded and struck out. */
+.sea-chart .status-list {
+  --status-cell: clamp(11px, calc(var(--board-size) / 22), 18px);
+  align-items: center;
+  gap: 6px 12px;
+  width: var(--board-size);
+  margin: 8px 0 0 24px;
+}
+
+.status-item {
+  position: relative;
+  display: flex;
+}
+
+.status-ship {
+  height: auto;
+}
+
+.sea-chart .status-item.is-sunk {
+  text-decoration: none;
+}
+
+.status-item.is-sunk .status-ship {
+  filter: grayscale(1) sepia(0.4);
+  opacity: 0.4;
+}
+
+.status-item.is-sunk::after {
+  content: '';
+  position: absolute;
+  inset: -2px -3px;
+  background:
+    linear-gradient(to top right, transparent calc(50% - 1px), #9c2b22 calc(50% - 1px), #9c2b22 calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(to bottom right, transparent calc(50% - 1px), #9c2b22 calc(50% - 1px), #9c2b22 calc(50% + 1px), transparent calc(50% + 1px));
+  opacity: 0.8;
+}
+
+.play .battlefield {
+  margin-top: 14px;
+}
+
+/* ---------- Placement ---------- */
+
+.play .placement {
+  margin-top: 16px;
+}
+
+.menu-plaque.placement-side {
+  flex: 0 1 380px;
+  align-items: stretch;
+  gap: 10px;
+  padding: 18px 20px;
+}
+
+.placement-side .hint {
+  color: #e9c87a;
+}
+
+.placement-side .fleet-list {
+  margin-top: 0;
+}
+
+.placement-side .actions {
+  margin-top: 4px;
+  justify-content: center;
+}
+
+/* ---------- Results plaque over the boards ---------- */
+
+.battle-area {
+  position: relative;
+}
+
+.battle-area.has-results:not(.results-hidden) .battlefield {
+  filter: brightness(0.5) saturate(0.7);
+  pointer-events: none;
+}
+
+.menu-plaque.end-plaque {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  width: min(560px, calc(100% - 16px));
+  margin: 0 auto;
+  gap: 10px;
+}
+
+.results-hidden .end-plaque {
+  display: none;
+}
+
+.end-title {
+  font-family: var(--font-pixel);
+  font-size: clamp(32px, 7vw, 48px);
+  line-height: 1;
+  color: transparent;
+  background-image: linear-gradient(#fff7cf 0%, #ffe08a 38%, #e3a733 55%, #b8741c 75%, #f2c255 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  filter:
+    drop-shadow(2px 0 0 #1a0f04)
+    drop-shadow(-2px 0 0 #1a0f04)
+    drop-shadow(0 2px 0 #1a0f04)
+    drop-shadow(0 -2px 0 #1a0f04)
+    drop-shadow(0 4px 0 rgba(0, 0, 0, 0.5));
+}
+
+.end-title.end-defeat {
+  background-image: linear-gradient(#ffd0c8 0%, #f0655c 45%, #a8302a 75%, #e0574c 100%);
+}
+
+.end-plaque .stats {
+  width: 100%;
+  margin: 0;
+  padding: 8px 4px 0;
+  background: none;
+  border: 0;
+}
+
+.end-plaque .stats .subheading {
+  display: none;
+}
+
+.end-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+@media (max-width: 480px) {
+  .play .topbar {
+    padding: 8px 10px;
+  }
+
+  .play .brand {
+    padding-left: 0;
+    font-size: 18px;
+  }
+
+  .play .brand .icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .play .topbar-actions {
+    gap: 4px;
+  }
+
+  .play .topbar .btn-small {
+    min-height: 36px;
+    padding: 2px 8px;
+    font-size: 16px;
+  }
+
+  .play .topbar .btn-icon .icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .topbar-heading {
+    order: 3;
+    width: 100%;
+    font-size: 20px;
+  }
+
+  .sea-chart {
+    padding: 28px 8px 8px 4px;
+  }
+
+  .placement-side .fleet-item {
+    grid-template-columns: 76px 1fr auto;
+    font-size: 16px;
+  }
+
+  .menu-plaque.placement-side {
+    padding: 16px 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message.flash-miss,
+  .message.flash-hit,
+  .message.flash-sunk {
+    animation: none;
+  }
+}
+
+/* The chart frames take some room, so play-screen boards are a touch smaller to keep both on screen. */
+.play {
+  --board-size: min(calc(100vw - 84px), 420px);
+}
+
+@media (min-width: 960px) {
+  .play {
+    --board-size: max(300px, min(420px, calc((100vw - 200px) / 2), calc(100vh - 330px)));
+  }
+}

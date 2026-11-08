@@ -42,7 +42,7 @@ export function statsPanel(
           'p',
           'gold-award',
           icon('icon-anchor-gold', 'icon'),
-          h('span', '', h('strong', '', 'Gold Anchor earned!'), ' Victory without a single miss.'),
+          h('span', '', h('strong', '', 'Gold Anchor earned!'), ' Victory with 85% accuracy or better.'),
           ...(goldAnchors > 1 ? [h('span', 'gold-count', `×${goldAnchors}`)] : []),
         ),
       ]

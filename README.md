@@ -64,7 +64,7 @@ Everyone works on their own branch, named after them, and merges into `main` thr
 - [x] Sound effects for miss, hit and sunk, plus a click for buttons (all synthesized, no audio files), with a mute button on the battle screen
 - [x] Music: an original sea shanty on the menus and a march in battle, synthesized in `src/ui/music.ts`, with a music button beside the mute button. It starts after the first tap or key press, because browsers block sound before that
 - [x] Animated pixel radar on the online waiting screens (connecting, game code, fleet ready)
-- [x] Main menu artwork: an animated sea battle in pixel art behind a gold title. Your ships fly blue flags (left), the enemy's red (right). Click the sea to fire: each hit leaves a burning scar, and the fifth blows the ship up and sinks it. Click the moon for a sunny day, and the sun for night again (remembered in the browser). Settings and How to Play open on the same scene
+- [x] Main menu artwork: an animated sea battle in pixel art behind a gold title. Your ships fly blue flags (left), the enemy's red (right). Click the sea to fire: each hit leaves a burning scar, and the fifth blows the ship up and sinks it. It starts on a sunny day; click the sun for night (dark mode) and the moon for day again (remembered in the browser). Settings and How to Play open on the same scene
 - [x] End-of-game stats: shots, hits, accuracy, ships sunk, longest hit streak, time played, plus a win/loss record saved in the browser
 - [x] Online mode: two devices play over the internet through a WebSocket server (see Online play below)
 - [x] Online reconnecting: a dropped player has 60 seconds to come back, automatically or with Rejoin after a reload
@@ -94,7 +94,7 @@ Everyone works on their own branch, named after them, and merges into `main` thr
 Spoilers for players, notes for the team:
 
 - **The Kraken:** on the main menu, shoot your own (blue-flagged) ships. There is no warning: the third friendly hit wakes the kraken, which drags that ship under. Typing the Konami code (↑ ↑ ↓ ↓ ← → ← → B A) sends it after an enemy instead.
-- **Gold Anchor:** win a game without missing a single shot. It is saved in the browser and shown under the title. It is extremely rare: all 17 shots have to hit.
+- **Gold Anchor:** win a game with 85% accuracy or better (at most 3 misses, since a win takes 17 hits). It is saved in the browser and shown under the title.
 
 ## Online play
 
