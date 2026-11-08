@@ -6,7 +6,7 @@ import { FLEET, type Coord, type Orientation, type ShotResult, coordLabel, isOnB
 import { type BoardView, createBoardView } from './boardView';
 import { button, h, icon } from './dom';
 import { type MenuScene, createMenuScene } from './menuScene';
-import { OnlineGame } from './online';
+import { OnlineGame, takeInviteCode } from './online';
 import { type Tally, addGoldAnchor, addResult, loadGoldAnchors } from './record';
 import { banner, battleScreen, seaChart, topStrip } from './battleView';
 import { audioButtons, statsPanel } from './statsView';
@@ -95,8 +95,11 @@ export class App {
     });
   }
 
+  // An invite link (?join=ABCD) opens the Online lobby with the friend's code filled in.
   start(): void {
-    this.showMenu();
+    const invite = takeInviteCode();
+    if (invite) this.online.showLobby(invite);
+    else this.showMenu();
   }
 
   // Every screen plays the menu music; a battle in progress switches to the battle music after this.
@@ -218,9 +221,9 @@ export class App {
   private showModes(): void {
     this.showSceneMenu(
       'Choose your opponent',
-      button('vs Computer', () => this.showDifficulty()),
-      button('2 Players', () => this.startSetup('two-player')),
       button('Online', () => this.online.showLobby()),
+      button('2 Players', () => this.startSetup('two-player')),
+      button('vs Computer', () => this.showDifficulty()),
       button('Back', () => this.showMenu(), 'btn-quiet'),
     );
   }
