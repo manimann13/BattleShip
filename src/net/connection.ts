@@ -12,6 +12,13 @@ export function socketUrl(): string {
   return `${protocol}//${window.location.host}/ws`;
 }
 
+// The free game server sleeps when nobody plays and takes up to a minute to wake. Any request wakes
+// it, so the game pings it as it opens, and again on the Online screen, to have it ready in time.
+export function wakeServer(): void {
+  if (typeof fetch !== 'function') return;
+  fetch('/healthz', { cache: 'no-store' }).catch(() => undefined);
+}
+
 export class Connection {
   private readonly socket: WebSocket;
   private closedByUs = false;

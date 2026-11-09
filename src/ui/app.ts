@@ -5,12 +5,12 @@ import { MatchStats, earnsGoldAnchor } from '../game/stats';
 import { FLEET, type Coord, type Orientation, type ShotResult, coordLabel, isOnBoard } from '../game/types';
 import { type BoardView, createBoardView } from './boardView';
 import { button, h, icon } from './dom';
-import { type MenuScene, createMenuScene } from './menuScene';
+import { type MenuScene, createMenuScene, skyTopColor } from './menuScene';
 import { OnlineGame, takeInviteCode } from './online';
 import { type Tally, addGoldAnchor, addResult, loadGoldAnchors } from './record';
 import { banner, battleScreen, seaChart, topStrip } from './battleView';
 import { audioButtons, statsPanel } from './statsView';
-import { setMusicEnabled, setMusicTrack, unlockMusic } from './music';
+import { musicUnlocked, setMusicEnabled, setMusicTrack, unlockMusic } from './music';
 import { playClickSound, playEndSound, playKrakenSound, playShotSound, playSkyChime } from './sound';
 import { COMPUTER_DELAY_MS, type ComputerSpeed, loadSettings, saveSettings } from './settings';
 
@@ -55,7 +55,7 @@ export class App {
       },
       onSkyChange: (day) => {
         if (this.settings.sound) playSkyChime(day);
-        this.root.classList.toggle('sky-day', day);
+        this.paintSky(day);
       },
       onKraken: () => {
         if (this.settings.sound) playKrakenSound();
@@ -76,18 +76,36 @@ export class App {
     });
     this.screen.tabIndex = -1;
     this.live.setAttribute('aria-live', 'polite');
-    this.root.append(this.screen, this.live);
+    // Shown instead of the game only on a phone held sideways: the boards can't fit that short a screen.
+    const rotateHint = h(
+      'div',
+      'rotate-hint',
+      h(
+        'div',
+        'menu-plaque',
+        h('div', 'rotate-phone'),
+        h('p', 'heading', 'Turn your phone upright'),
+        h('p', 'menu-prompt', 'Battle Ship plays best held tall.'),
+      ),
+    );
+    rotateHint.setAttribute('role', 'alert');
+    this.root.append(this.screen, this.live, rotateHint);
     this.applyGridLabels();
     // Every menu and screen button ticks. Board squares are not .btn, so shots keep their own sounds.
     // This runs after the button's own handler, so unmuting ticks and muting stays silent.
     document.addEventListener('click', (event) => {
       if (this.settings.sound && (event.target as Element | null)?.closest?.('button.btn')) playClickSound();
     });
-    // Browsers block sound until the first tap or key press, so the music waits for one.
+    // Try the music as soon as the game opens. Most browsers block sound until the first tap or key
+    // press, so every one of those tries again until it plays.
     setMusicEnabled(this.settings.music);
-    for (const type of ['pointerdown', 'keydown'] as const) {
-      document.addEventListener(type, () => unlockMusic(), { once: true, capture: true });
-    }
+    unlockMusic();
+    const events = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const;
+    const retry = () => {
+      unlockMusic();
+      if (musicUnlocked()) for (const type of events) document.removeEventListener(type, retry, true);
+    };
+    for (const type of events) document.addEventListener(type, retry, true);
     document.addEventListener('keydown', (event) => {
       if (this.placementView && event.key.toLowerCase() === 'r' && !event.metaKey && !event.ctrlKey) {
         this.rotate();
@@ -142,7 +160,7 @@ export class App {
   // Any brass plaque over the animated scene, under the title: menus, Settings and How to Play.
   // The corner sound buttons are left off Settings, which has its own switches for them.
   private showScene(plaque: HTMLElement, cornerButtons = true): void {
-    this.root.classList.toggle('sky-day', this.scene.isDay());
+    this.paintSky(this.scene.isDay());
     this.scene.setMode('menu');
     this.showFresh(
       h(
@@ -158,9 +176,18 @@ export class App {
     this.scene.start();
   }
 
+  // Day or night colours for the menus, plus the top of the sky behind the phone's notch and status bar.
+  private paintSky(day: boolean): void {
+    this.root.classList.toggle('sky-day', day);
+    const top = skyTopColor(day);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', top);
+    document.documentElement.style.backgroundColor = top;
+    document.body.style.backgroundColor = top;
+  }
+
   // The play screens (placement, pass, battle and every online screen) over the same sea, slowed and dimmed.
   private showPlay(fresh: boolean, ...content: Node[]): void {
-    this.root.classList.toggle('sky-day', this.scene.isDay());
+    this.paintSky(this.scene.isDay());
     this.backdrop.replaceChildren(this.scene.element);
     const view = h('div', 'play', this.backdrop, h('div', 'play-content', ...content), this.scene.overlay);
     if (fresh) this.showFresh(view);

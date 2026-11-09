@@ -25,8 +25,15 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
-  // Online play and anything from another site always go straight to the network.
-  if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.endsWith('/ws')) return;
+  // Online play, the server wake-up check and anything from another site always go straight to the network.
+  if (
+    request.method !== 'GET' ||
+    url.origin !== self.location.origin ||
+    url.pathname.endsWith('/ws') ||
+    url.pathname.endsWith('/healthz')
+  ) {
+    return;
+  }
 
   if (request.mode === 'navigate') {
     event.respondWith(
