@@ -93,7 +93,7 @@ Everyone works on their own branch, named after them, and merges into `main` thr
 
 Spoilers for players, notes for the team:
 
-- **The Kraken:** on the main menu, shoot your own (blue-flagged) ships. There is no warning: the third friendly hit wakes the kraken, which drags that ship under. Typing the Konami code (↑ ↑ ↓ ↓ ← → ← → B A) sends it after an enemy instead.
+- **The Kraken:** on the main menu, sink one of your own (blue-flagged) ships: five hits, the same as an enemy. As it goes down, the kraken rises and drags the ship that fired under, with a note that friendly fire will not be tolerated. Typing the Konami code (↑ ↑ ↓ ↓ ← → ← → B A) sends it after an enemy instead.
 - **Gold Anchor:** win a game with 85% accuracy or better (at most 3 misses, since a win takes 17 hits). It is saved in the browser and shown under the title.
 
 ## Online play

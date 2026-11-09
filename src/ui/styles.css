@@ -1874,3 +1874,37 @@ a.btn {
     animation: none;
   }
 }
+
+/* "Friendly fire will not be tolerated." A small note that fades in over the sea, then away. */
+.scene-toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(18px, calc(env(safe-area-inset-bottom) + 10px));
+  z-index: 3;
+  max-width: calc(100% - 32px);
+  margin: 0;
+  padding: 6px 12px;
+  border: 2px solid #a87c2c;
+  border-radius: 4px;
+  background: rgba(7, 12, 28, 0.85);
+  color: #ffd2b8;
+  font-size: 13px;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transform: translate(-50%, 6px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  pointer-events: none;
+}
+
+.scene-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-toast {
+    transition: none;
+  }
+}
