@@ -5,7 +5,8 @@ import type { ShotResult } from '../game/types';
 // Interactive: turrets follow the pointer, clicking the sea fires a shell, clicking the sky fires flak.
 // Each hit scars and sets fire to an enemy ship, and the fifth blows it up; it sinks and later sails back in.
 // Clicking the moon turns night into a sunny day, and clicking the sun turns it back.
-// Easter egg: hitting your own ships three times wakes the kraken (so does the Konami code, against an enemy).
+// Easter egg: sinking one of your own ships (5 hits) wakes the kraken, which drags the ship that fired under
+// (the Konami code sends it after an enemy instead).
 
 export interface MenuScene {
   readonly element: HTMLCanvasElement;
@@ -32,6 +33,8 @@ export interface SceneOptions {
   onSkyChange?(day: boolean): void;
   // The kraken is rising.
   onKraken?(): void;
+  // The player shelled one of their own ships, and the kraken is coming for the ship that fired.
+  onFriendlyFire?(): void;
 }
 
 type Facing = 1 | -1;
@@ -95,6 +98,8 @@ interface Shell {
   trail: { x: number; y: number }[];
   // A firework rocket: bursts into these colours instead of landing.
   firework?: readonly string[];
+  // The ship whose gun fired it.
+  shooter?: Ship;
 }
 
 interface Particle {
@@ -523,6 +528,10 @@ export function createMenuScene(options: SceneOptions): MenuScene {
   let ambientTimer = 2;
   let running = false;
   let mode: SceneMode = 'menu';
+  // Whether every sailing ship on each side is down (blowing up, sinking or waiting to sail back in),
+  // and the fireworks queued for the other side's little celebration.
+  const fleetDown: Record<Side, boolean> = { ally: false, enemy: false };
+  let cheers: { side: Side; t: number }[] = [];
   // Backdrop with Animations off: draw one frame, then stop.
   let frozen = false;
   // Time saved up between backdrop frames, which run at about 20 a second.
@@ -536,7 +545,6 @@ export function createMenuScene(options: SceneOptions): MenuScene {
   let ablaze: Ship[] = [];
 
   // Easter egg state.
-  let friendlyHits = 0;
   let kraken: { ship: Ship; t: number } | null = null;
   let konami = 0;
 
@@ -750,6 +758,7 @@ export function createMenuScene(options: SceneOptions): MenuScene {
       byPlayer,
       target: ship.side === 'ally' ? 'enemy' : 'ally',
       trail: [],
+      shooter: ship,
     });
     burst(start.x, start.y, 5, ['#fff6c8', '#ffd86b', '#ff9a3c'], 40, 0, 0.14, 1);
     burst(start.x, start.y, 2, ['#5a6070', '#3d4250'], 8, -6, 0.9, 1, 0.8);
@@ -837,16 +846,14 @@ export function createMenuScene(options: SceneOptions): MenuScene {
       if (!shell.byPlayer && ship.side !== shell.target) continue;
       if (!onShip(ship, x, y)) continue;
       if (!shell.byPlayer) break; // Ambient fire never hits.
-      if (ship.side === 'ally') {
-        friendlyFire(ship, x, y);
-        return;
-      }
       ship.hits++;
       scar(ship, x, y);
       explosion(x, Math.min(y, ship.baseline - 1), ship.hits >= 3);
       // The last hit sets off a chain of explosions; blowUp() then sends it down.
       if (ship.hits >= SINK_HITS) ship.dying = DYING_SECONDS;
       impact('hit');
+      // Sinking one of our own ships wakes the kraken, which comes for the ship that fired the last shot.
+      if (ship.side === 'ally' && ship.hits >= SINK_HITS) friendlyFire(ship, shell.shooter);
       return;
     }
     splash(x, Math.max(y, horizon + 1));
@@ -908,20 +915,24 @@ export function createMenuScene(options: SceneOptions): MenuScene {
 
   // ---------- Victory and defeat ----------
 
+  // Behind the boards the bursts go on the overlay, above the charts; on the menu they stay in the sky.
   function fireworkBurst(x: number, y: number, colors: readonly string[]): void {
-    burst(x, y, 8, ['#ffffff', '#fff6c8'], 16, 0, 0.22, 3, 0, 0, true);
-    burst(x, y, 48, colors, 42, 0, 1.5, 1, 0, 18, true);
-    burst(x, y, 16, colors, 24, 0, 1.2, 2, 0, 14, true);
+    const top = mode !== 'menu';
+    burst(x, y, 8, ['#ffffff', '#fff6c8'], 16, 0, 0.22, 3, 0, 0, top);
+    burst(x, y, 48, colors, 42, 0, 1.5, 1, 0, 18, top);
+    burst(x, y, 16, colors, 24, 0, 1.2, 2, 0, 14, top);
     // A few sparks fall and twinkle below the burst.
-    burst(x, y, 8, ['#fff1a8', '#ffd23c', '#e3a733'], 20, 6, 2.2, 1, 0, 30, true);
+    burst(x, y, 8, ['#fff1a8', '#ffd23c', '#e3a733'], 20, 6, 2.2, 1, 0, 30, top);
   }
 
   // A rocket rises from a ship's deck to a spot in the sky.
-  function launchFirework(ship: Ship): void {
+  // `low` keeps the burst just above the horizon and near the ship, below the menu (for the menu's cheers).
+  function launchFirework(ship: Ship, low = false): void {
     const sx = shipX(ship) + ship.art.w * (0.3 + rand() * 0.4);
     const sy = shipTop(ship) + ship.art.waterline - 6;
-    const tx = Math.max(6, Math.min(W - 6, sx + (rand() - 0.5) * W * 0.7));
-    const ty = Math.round(horizon * (0.12 + rand() * 0.6));
+    const spread = low ? 0.3 : 0.7;
+    const tx = Math.max(6, Math.min(W - 6, sx + (rand() - 0.5) * W * spread));
+    const ty = Math.round(low ? horizon - 14 - rand() * Math.min(40, horizon * 0.2) : horizon * (0.12 + rand() * 0.6));
     shells.push({
       sx,
       sy,
@@ -1005,15 +1016,10 @@ export function createMenuScene(options: SceneOptions): MenuScene {
 
   // ---------- Easter eggs ----------
 
-  function friendlyFire(ship: Ship, x: number, y: number): void {
-    explosion(x, Math.min(y, ship.baseline - 1), false);
-    scar(ship, x, y);
-    ship.burning = 4;
-    impact('hit');
-    friendlyHits++;
-    if (friendlyHits < 3) return;
-    friendlyHits = 0;
-    summonKraken(ship);
+  // Our own ship has taken its fifth hit and is going down: the kraken rises for the ship that sank it,
+  // and grabs it while the wreck sinks.
+  function friendlyFire(victim: Ship, shooter: Ship | undefined): void {
+    if (summonKraken(shooter ?? victim)) options.onFriendlyFire?.();
   }
 
   function summonKraken(ship: Ship): boolean {
@@ -1053,12 +1059,38 @@ export function createMenuScene(options: SceneOptions): MenuScene {
     if (kraken.t >= KRAKEN_END) kraken = null;
   }
 
+  // On the menu, when both sailing ships of one side are down at the same time, the other side sends
+  // up a firework or two.
+  function updateCheers(dt: number): void {
+    for (const side of ['ally', 'enemy'] as const) {
+      const sailing = ships.filter((ship) => ship.side === side && ship.layer > 0 && ship.homeX > -900);
+      const down =
+        sailing.length >= 2 &&
+        sailing.every((ship) => ship.dying > 0 || ship.sink >= 0 || ship.respawn > 0 || kraken?.ship === ship);
+      if (down && !fleetDown[side] && mode === 'menu' && !celebration) {
+        const winner: Side = side === 'ally' ? 'enemy' : 'ally';
+        // The enemy waits a little longer, until the kraken has its ship or the wreck is going down.
+        const wait = winner === 'enemy' ? 1.8 : 0.5;
+        cheers.push({ side: winner, t: wait }, { side: winner, t: wait + 0.5 + rand() * 0.6 });
+      }
+      fleetDown[side] = down;
+    }
+    for (const cheer of cheers) {
+      cheer.t -= dt;
+      if (cheer.t > 0) continue;
+      const crews = ships.filter((ship) => ship.side === cheer.side && afloat(ship));
+      if (crews.length > 0) launchFirework(crews[Math.floor(rand() * crews.length)], true);
+    }
+    cheers = cheers.filter((cheer) => cheer.t > 0);
+  }
+
   // ---------- Update ----------
 
   function update(dt: number): void {
     time += dt;
     updateEggs(dt);
     updateCelebration(dt);
+    updateCheers(dt);
     parallax += ((pointer.x / W - 0.5) - parallax) * Math.min(1, dt * 3);
     for (const cloud of clouds) {
       cloud.x += (cloud.speed * dt) / W;
@@ -1420,7 +1452,8 @@ export function createMenuScene(options: SceneOptions): MenuScene {
     }
     octx.clearRect(0, 0, W, H);
     for (const shell of shells) {
-      const c = shell.firework ? octx : ctx;
+      // Behind the boards, rockets fly on the overlay above the charts; on the menu, in the scene itself.
+      const c = shell.firework && mode !== 'menu' ? octx : ctx;
       shell.trail.forEach((p, i) => {
         c.fillStyle = i === shell.trail.length - 1 ? '#fff6c8' : i > 1 ? '#ffb43c' : '#a8542a';
         c.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
@@ -1489,16 +1522,15 @@ export function createMenuScene(options: SceneOptions): MenuScene {
     }
     if (still) return;
     pointer = { x, y };
-    // The closest allied gun ship that can bear on the spot fires.
+    // Tapping one of our own ships: another ship opens fire on it (and the kraken will want a word).
+    const own = ships.find((s) => s.side === 'ally' && afloat(s) && s.layer > 0 && onShip(s, x, y));
+    // The closest allied gun ship that can bear on the spot fires. A ship never fires on itself.
     const shooters = ships
-      .filter((s) => s.side === 'ally' && s.layer > 0 && afloat(s))
+      .filter((s) => s.side === 'ally' && s.layer > 0 && afloat(s) && s !== own)
       .sort((a, b) => Math.abs(shipX(a) - x) - Math.abs(shipX(b) - x));
     for (const ship of shooters) if (fire(ship, Math.round(x), Math.round(y), true)) return;
-    // Aiming at one of our own ships that no gun can bear on: a gun crew lobs one over anyway.
-    const own = ships.find((s) => s.side === 'ally' && afloat(s) && s.layer > 0 && onShip(s, x, y));
-    if (!own) return;
-    const others = shooters.filter((s) => s !== own);
-    fire(others[0] ?? own, Math.round(x), Math.round(y), true, true);
+    // No gun can bear on our own ship: the nearest crew lobs one over anyway.
+    if (own && shooters[0]) fire(shooters[0], Math.round(x), Math.round(y), true, true);
   });
   document.addEventListener('keydown', (event) => {
     if (!element.isConnected || mode !== 'menu' || still) return;

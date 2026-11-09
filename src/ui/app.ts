@@ -47,6 +47,9 @@ export class App {
   // Holds the scene behind the play screens. Kept between renders so the sea never restarts.
   private readonly backdrop = h('div', 'play-backdrop');
   private celebrationTimer: number | undefined;
+  // A short note over the menu scene when the player shells their own fleet.
+  private readonly sceneToast = h('p', 'scene-toast', 'Friendly fire will not be tolerated.');
+  private toastTimer: number | undefined;
 
   constructor(private readonly root: HTMLElement) {
     this.scene = createMenuScene({
@@ -60,6 +63,7 @@ export class App {
       onKraken: () => {
         if (this.settings.sound) playKrakenSound();
       },
+      onFriendlyFire: () => this.showFriendlyFire(),
     });
     this.online = new OnlineGame({
       show: (...content) => this.showPlay(false, ...content),
@@ -89,7 +93,8 @@ export class App {
       ),
     );
     rotateHint.setAttribute('role', 'alert');
-    this.root.append(this.screen, this.live, rotateHint);
+    this.sceneToast.setAttribute('role', 'status');
+    this.root.append(this.screen, this.live, this.sceneToast, rotateHint);
     this.applyGridLabels();
     // Every menu and screen button ticks. Board squares are not .btn, so shots keep their own sounds.
     // This runs after the button's own handler, so unmuting ticks and muting stays silent.
@@ -174,6 +179,12 @@ export class App {
       ),
     );
     this.scene.start();
+  }
+
+  private showFriendlyFire(): void {
+    window.clearTimeout(this.toastTimer);
+    this.sceneToast.classList.add('show');
+    this.toastTimer = window.setTimeout(() => this.sceneToast.classList.remove('show'), 3200);
   }
 
   // Day or night colours for the menus, plus the top of the sky behind the phone's notch and status bar.
