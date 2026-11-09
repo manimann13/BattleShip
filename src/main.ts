@@ -3,6 +3,8 @@ import '@fontsource/pixelify-sans/700.css';
 import './ui/styles.css';
 import { App } from './ui/app';
 import { preloadSprites } from './ui/dom';
+import { lockZoom } from './ui/zoomLock';
+import { wakeServer } from './net/connection';
 
 const root = document.querySelector<HTMLElement>('#app');
 if (!root) throw new Error('Missing #app element');
@@ -19,6 +21,9 @@ const fonts = document.fonts
   ? Promise.all([document.fonts.load('400 16px "Pixelify Sans"'), document.fonts.load('700 16px "Pixelify Sans"')])
   : Promise.resolve();
 
+lockZoom();
+// Online play needs the game server; start waking it now in case it's asleep.
+wakeServer();
 new App(root).start();
 
 Promise.race([
