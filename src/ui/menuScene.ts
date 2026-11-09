@@ -125,6 +125,10 @@ const SKY_MARGIN = 4;
 const SKY = ['#060a18', '#0a1026', '#0f1834', '#152042', '#1d2852', '#2a2f5e', '#3b3768', '#53406e'];
 const SEA = ['#25386a', '#1d2f5c', '#18284f', '#132143', '#0f1b38', '#0b162e', '#09122a'];
 const SKY_DAY = ['#2f7fd0', '#3c8ad6', '#4b96dc', '#5ba3e2', '#6eb0e7', '#84bdeb', '#9dcbee', '#b9daf0'];
+// The colour at the very top of the sky, for the phone's status bar behind the notch.
+export function skyTopColor(day: boolean): string {
+  return day ? SKY_DAY[0] : SKY[0];
+}
 const SEA_DAY = ['#4f9fd8', '#4592cd', '#3b85c1', '#3278b5', '#296ba8', '#21609b', '#1a558e'];
 const STAR_COLORS = ['#5d6a99', '#9aa7d6', '#e8ecff', '#ffe9a8'];
 
@@ -556,9 +560,18 @@ export function createMenuScene(options: SceneOptions): MenuScene {
     overlay.style.width = element.style.width;
     overlay.style.height = element.style.height;
 
-    const seaDepth = Math.round(Math.max(56, Math.min(H * 0.4, 100)));
+    // On phones (tall, narrow screens) the menu covers the middle of the sky, so the sea comes up to
+    // fill the lower part of the screen and the moon or sun sits just above it, under the menu.
+    // Laptops keep the low horizon and the moon up high.
+    const phone = vh > vw && vw <= 820;
+    // Taller phones get more sea; shorter ones (like an iPhone SE) less, so the moon clears the menu.
+    const seaShare = Math.max(0.25, Math.min(0.4, (vh / vw - 1.6) * 0.5 + 0.2));
+    const seaDepth = phone ? Math.round(H * seaShare) : Math.round(Math.max(56, Math.min(H * 0.4, 100)));
     horizon = H - seaDepth;
-    moon = { x: Math.round(W * 0.86), y: Math.round(horizon * 0.5), r: Math.round(Math.max(7, Math.min(H * 0.065, 14))) };
+    const radius = Math.round(Math.max(7, Math.min(H * 0.065, 14)));
+    moon = phone
+      ? { x: Math.round(W * 0.8), y: horizon - Math.round(radius * 2.4), r: radius }
+      : { x: Math.round(W * 0.86), y: Math.round(horizon * 0.5), r: radius };
     if (pointer.x < 0) pointer = { x: W / 2, y: horizon - 20 };
 
     const r = seeded(3);
@@ -575,8 +588,8 @@ export function createMenuScene(options: SceneOptions): MenuScene {
       ship.baseline = horizon + Math.round(seaDepth * depth) - (ship.layer === 0 ? seaDepth - 2 : 0);
       ship.homeX = Math.round(ship.place(W));
     }
-    // Mid-distance ships would crowd a phone screen.
-    for (const ship of ships) if (narrow && ship.layer === 1) ship.homeX = -999;
+    // Mid-distance ships would crowd a narrow, wide-ish window; phones have the taller sea to fit them.
+    for (const ship of ships) if (narrow && !phone && ship.layer === 1) ship.homeX = -999;
 
     skyNight = bakeSky(false);
     skyDay = bakeSky(true);

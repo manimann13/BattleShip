@@ -1,7 +1,7 @@
 import { Board } from '../game/board';
 import { MatchStats, earnsGoldAnchor } from '../game/stats';
 import { FLEET, type Coord, type ShotResult, coordLabel } from '../game/types';
-import { Connection } from '../net/connection';
+import { Connection, wakeServer } from '../net/connection';
 import {
   type ClientMessage,
   EMOTES,
@@ -98,6 +98,12 @@ export function takeInviteCode(): string | null {
 }
 const SESSION_KEY = 'battleship-online';
 // Waits between reconnect attempts, about 60 seconds in all: as long as the server keeps a seat.
+// While the first connection is being made, how long before the screen says the server is waking up,
+// and how long to keep quietly trying before giving up. The free server can take about a minute.
+const WAKE_NOTICE_MS = 3000;
+const WAKE_LIMIT_MS = 90_000;
+const WAKE_RETRY_MS = 2000;
+
 const RETRY_DELAYS_MS = [500, 1000, 2000, 4000, 8000, 8000, 8000, 8000, 8000, 8000, 5000];
 const EMOTE_SHOW_MS = 3000;
 const EMOTE_GAP_MS = 1500;
@@ -154,6 +160,9 @@ export class OnlineGame {
   private reconnecting = false;
   private retry = 0;
   private retryTimer: number | undefined;
+  // When the current first connection attempt began, and the timer that counts the wait on screen.
+  private connectStartedAt = 0;
+  private wakeTimer: number | undefined;
 
   private readonly bubbles = { mine: h('div', 'emote-bubble'), theirs: h('div', 'emote-bubble emote-theirs') };
   private readonly bubbleTimers = { mine: 0, theirs: 0 };
@@ -219,6 +228,7 @@ export class OnlineGame {
   // Leaves the current match, if any, and closes the connection. Safe to call at any time.
   dispose(): void {
     window.clearTimeout(this.retryTimer);
+    window.clearInterval(this.wakeTimer);
     this.reconnecting = false;
     if (this.active) {
       this.connection?.send({ type: 'leave' });
@@ -236,6 +246,8 @@ export class OnlineGame {
   // With an invite code, the code box is filled in and Join Game is the main button.
   showLobby(invite?: string): void {
     this.dispose();
+    // Start waking the server while the player picks Host or Join.
+    wakeServer();
     const input = h('input', 'text-input');
     input.type = 'text';
     input.maxLength = CODE_LENGTH;
@@ -288,8 +300,9 @@ export class OnlineGame {
   }
 
   // Like notice(), but with a sweeping radar, for screens that wait on the server or the opponent.
-  private waiting(title: string, text: string, ...actions: HTMLElement[]): void {
-    this.radarScreen('pass-icon radar-sweep', title, text, actions);
+  // Returns the heading and text, so a screen can update them while it waits.
+  private waiting(title: string, text: string, ...actions: HTMLElement[]): [HTMLElement, HTMLElement] {
+    return this.radarScreen('pass-icon radar-sweep', title, text, actions);
   }
 
   // A slow red sweep: the signal is gone, but Retry can look for it again.
@@ -297,18 +310,14 @@ export class OnlineGame {
     this.radarScreen('pass-icon radar-sweep radar-lost', title, text, actions);
   }
 
-  private radarScreen(radarClass: string, title: string, text: string, actions: HTMLElement[]): void {
+  private radarScreen(radarClass: string, title: string, text: string, actions: HTMLElement[]): [HTMLElement, HTMLElement] {
     const radar = h('div', radarClass);
     radar.setAttribute('aria-hidden', 'true');
-    this.host.showFresh(
-      this.host.plaque(
-        radar,
-        h('h1', 'heading', title),
-        h('p', 'menu-prompt', text),
-        h('div', 'menu-buttons', ...actions),
-      ),
-    );
+    const heading = h('h1', 'heading', title);
+    const body = h('p', 'menu-prompt', text);
+    this.host.showFresh(this.host.plaque(radar, heading, body, h('div', 'menu-buttons', ...actions)));
     this.host.announce(`${title}. ${text}`);
+    return [heading, body];
   }
 
   // The host's waiting screen: the code, a QR code right under it for a friend's phone camera, then
@@ -339,12 +348,28 @@ export class OnlineGame {
     this.phase = 'connecting';
     this.opponentLeft = false;
     this.active = true;
-    this.waiting(
+    const [heading, text] = this.waiting(
       'Connecting…',
-      'The first connection can take up to a minute while the server wakes up.',
+      'Reaching the game server.',
       button('Cancel', () => this.showLobby(), 'btn-quiet'),
     );
+    this.connectStartedAt = Date.now();
+    this.wakeTimer = window.setInterval(() => this.showWaking(heading, text), 1000);
     this.connect(first);
+  }
+
+  // After a few seconds without an answer the server is most likely asleep: say so, and count the wait.
+  private showWaking(heading: HTMLElement, text: HTMLElement): void {
+    const waited = Date.now() - this.connectStartedAt;
+    if (this.connected || this.phase !== 'connecting' || !heading.isConnected) {
+      window.clearInterval(this.wakeTimer);
+      return;
+    }
+    if (waited < WAKE_NOTICE_MS) return;
+    const first = heading.textContent !== 'Waking up the server…';
+    heading.textContent = 'Waking up the server…';
+    text.textContent = `The game server naps when nobody is playing, and takes up to a minute to start. ${Math.round(waited / 1000)}s`;
+    if (first) this.host.announce('Waking up the server. This can take up to a minute.');
   }
 
   private connect(first: ClientMessage): void {
@@ -365,6 +390,14 @@ export class OnlineGame {
   private handleDrop(opened: boolean): void {
     this.connection = null;
     this.connected = false;
+    // A sleeping server can turn the first attempts away while it starts: keep trying for a while.
+    if (!opened && this.phase === 'connecting' && Date.now() - this.connectStartedAt < WAKE_LIMIT_MS) {
+      this.retryTimer = window.setTimeout(() => {
+        wakeServer();
+        this.connect(this.lastAttempt);
+      }, WAKE_RETRY_MS);
+      return;
+    }
     if (this.inMatch() && this.session && !this.opponentLeft) {
       this.scheduleReconnect();
       return;

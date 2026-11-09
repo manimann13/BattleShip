@@ -354,11 +354,34 @@ export function setMusicEnabled(on: boolean): void {
   queueUpdate();
 }
 
-// Browsers only allow sound after the player interacts with the page.
+// Starts the music once the browser lets the page make sound. Called as the game opens (installed
+// apps and sites the player visits often may allow it straight away) and again on every tap or key
+// press until it works: phones only allow sound after a real tap, which they count when the finger
+// lifts, not when it touches down.
 export function unlockMusic(): void {
   if (unlocked) return;
-  unlocked = true;
-  queueUpdate();
+  const ac = context();
+  if (!ac) return;
+  try {
+    // Older iPhones also need a sound started during the tap itself; a silent blip does it.
+    const blip = ac.createBufferSource();
+    blip.buffer = ac.createBuffer(1, 1, ac.sampleRate);
+    blip.connect(ac.destination);
+    blip.start();
+  } catch {
+    // Not needed everywhere.
+  }
+  const ready = () => {
+    if (unlocked || ac.state !== 'running') return;
+    unlocked = true;
+    queueUpdate();
+  };
+  if (ac.state === 'running') ready();
+  else void ac.resume().then(ready, () => undefined);
+}
+
+export function musicUnlocked(): boolean {
+  return unlocked;
 }
 
 if (typeof document !== 'undefined') document.addEventListener('visibilitychange', queueUpdate);
