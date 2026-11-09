@@ -16,7 +16,7 @@ Everyone works on their own branch, named after them, and merges into `main` thr
    npm install
    ```
 
-2. Create your branch from the latest `main`, using your name. For example, Mani's branch is `Mani_branch`:
+2. Create your branch from the latest `main`, named after you (for example `YourName_branch`):
 
    ```bash
    git checkout main
